@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, session
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -17,23 +17,23 @@ from email import encoders
 from datetime import datetime
 
 app = Flask(__name__)
-# Chiave segreta per gestire le sessioni degli utenti
-app.secret_key = os.getenv("SECRET_KEY", "furgoni-secret-2024")
+# Chiave segreta per le sessioni (usa una variabile d'ambiente su Render per sicurezza)
+app.secret_key = os.getenv("SECRET_KEY", "furgoni-secret-2026")
 
-# Configurazione IDs (Sostituisci o usa variabili d'ambiente su Render)
+# Configurazione IDs
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "1Hk-GOKdMts3Qm1qgkt9V58YUoP6Hrshl")
 DESTINATARIO_EMAIL = "valerio121291@hotmail.it" 
 
-# Render richiede l'uso di /tmp per scrivere file temporaneamente
+# Cartella temporanea per Render
 TEMP_FOLDER = "/tmp/furgoni"
 
-def invia_email_outlook(pdf_path, filename):
-    """Invia il PDF tramite SMTP di Outlook/Hotmail"""
-    mittente = os.getenv("OUTLOOK_USER")  # valerio121291@hotmail.it
-    password = os.getenv("OUTLOOK_PASS")  # La tua Password per le App
-    
+def invia_email_gmail(pdf_path, filename):
+    """Invia il PDF tramite il server SMTP di Gmail"""
+    mittente = os.getenv("GMAIL_USER") # pvalerio910@gmail.com
+    password = os.getenv("GMAIL_PASS") # Password per le app di 16 lettere
+
     if not mittente or not password:
-        print("⚠️ Errore: Credenziali email non trovate nelle variabili d'ambiente.")
+        print("⚠️ Errore: Credenziali GMAIL_USER o GMAIL_PASS non trovate.")
         return
 
     msg = MIMEMultipart()
@@ -52,9 +52,9 @@ def invia_email_outlook(pdf_path, filename):
             part.add_header('Content-Disposition', f"attachment; filename= {filename}")
             msg.attach(part)
 
-        # Connessione al server Microsoft Office 365 / Hotmail
-        with smtplib.SMTP('smtp.office365.com', 587) as server:
-            server.starttls()  # Avvia crittografia sicura
+        # Connessione al server Gmail
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
             server.login(mittente, password)
             server.send_message(msg)
         
@@ -63,14 +63,14 @@ def invia_email_outlook(pdf_path, filename):
         print(f"❌ Errore critico invio email: {e}")
 
 def carica_pdf_su_drive(pdf_path, filename):
-    """Carica il file PDF nella cartella specifica di Google Drive"""
+    """Carica il file PDF su Google Drive"""
     try:
         creds_json = os.getenv("GOOGLE_CREDENTIALS")
         if creds_json:
             creds_dict = json.loads(creds_json)
             creds = Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive'])
         else:
-            # Fallback locale per test
+            # Fallback locale
             creds = Credentials.from_service_account_file("credentials.json", scopes=['https://www.googleapis.com/auth/drive'])
         
         drive_service = build('drive', 'v3', credentials=creds)
@@ -86,7 +86,7 @@ def carica_pdf_su_drive(pdf_path, filename):
         return None
 
 def genera_pdf(corsa_data):
-    """Crea il documento PDF con i dati della corsa"""
+    """Crea il documento PDF e avvia invio/caricamento"""
     if not os.path.exists(TEMP_FOLDER):
         os.makedirs(TEMP_FOLDER)
     
@@ -98,24 +98,22 @@ def genera_pdf(corsa_data):
     elements = []
     styles = getSampleStyleSheet()
     
-    # Intestazione
     title = Paragraph("RAPPORTO USCITA FURGONE", styles['Heading1'])
     elements.append(title)
     elements.append(Spacer(1, 12))
     
-    # Tabella Dati
     km_percorsi = int(corsa_data["km_arrivo"]) - int(corsa_data["km_partenza"])
     table_data = [
         ["DESCRIZIONE", "DETTAGLIO"],
         ["Autista", corsa_data["autista"]],
-        ["Furgone (Targa)", corsa_data["targa"]],
-        ["Luogo Partenza", corsa_data["partenza"]],
+        ["Furgone", corsa_data["targa"]],
+        ["Partenza", corsa_data["partenza"]],
         ["Destinazione", corsa_data["destinazione"]],
-        ["KM alla Partenza", corsa_data["km_partenza"]],
-        ["KM all'Arrivo", corsa_data["km_arrivo"]],
-        ["Totale KM Percorsi", str(km_percorsi)],
-        ["Orario Inizio", corsa_data["data_ora_partenza"]],
-        ["Orario Fine", corsa_data["data_ora_arrivo"]]
+        ["KM Partenza", corsa_data["km_partenza"]],
+        ["KM Arrivo", corsa_data["km_arrivo"]],
+        ["Totale KM", str(km_percorsi)],
+        ["Inizio", corsa_data["data_ora_partenza"]],
+        ["Fine", corsa_data["data_ora_arrivo"]]
     ]
     
     t = Table(table_data, colWidths=[2*inch, 3.5*inch])
@@ -123,19 +121,14 @@ def genera_pdf(corsa_data):
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
     elements.append(t)
-    
-    # Generazione file
     doc.build(elements)
     
-    # Esecuzione azioni esterne
+    # Esegue le azioni dopo la creazione del file
     carica_pdf_su_drive(pdf_path, pdf_filename)
-    invia_email_outlook(pdf_path, pdf_filename)
+    invia_email_gmail(pdf_path, pdf_filename)
     
     return pdf_path
 
@@ -167,6 +160,5 @@ def registra_uscita():
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
-    # La porta è dinamica per Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
