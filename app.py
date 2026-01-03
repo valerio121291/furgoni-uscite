@@ -160,7 +160,7 @@ def index():
                 "km_arrivo": request.form.get("km_arrivo"),
                 "data_ora_arrivo": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
-            genera_pdf(corsa)
+         #genera_pdf(corsa)
         
         return redirect("/")
 
