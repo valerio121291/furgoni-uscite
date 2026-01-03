@@ -4,50 +4,84 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-import csv
+from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+import gspread
 import os
 from datetime import datetime
-
+import io
 
 app = Flask(__name__)
-FILE_LOG = "uscite_furgoni.csv"
-FURGONI_FOLDER = "furgoni"  # cartella principale
-
 app.secret_key = "super-segreto-furgoni-123"
 
+# Configurazione Google Sheets
+SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"  # ← AGGIORNA CON TUO ID
+SHEET_NAME = "Foglio1"
+FURGONI_FOLDER = "furgoni"
+
+# Carica le credenziali da variabile d'ambiente o file
+def get_sheets_client():
+    """Ottiene un client di Google Sheets autenticato"""
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    
+    if creds_json:
+        # Se le credenziali sono in env (Render)
+        import json
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict)
+    else:
+        # Se le credenziali sono in un file locale
+        creds = Credentials.from_service_account_file("credentials.json")
+    
+    gc = gspread.authorize(creds)
+    return gc
+
+def salva_su_sheets(dati_corsa):
+    """Salva i dati della corsa su Google Sheets"""
+    try:
+        gc = get_sheets_client()
+        sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
+        
+        # Aggiungi la riga ai dati del foglio
+        sheet.append_row([
+            dati_corsa["data_ora_partenza"],
+            dati_corsa["data_ora_arrivo"],
+            dati_corsa["autista"],
+            dati_corsa["targa"],
+            dati_corsa["partenza"],
+            dati_corsa["destinazione"],
+            dati_corsa["km_partenza"],
+            dati_corsa["km_arrivo"],
+        ])
+        print("✅ Dati salvati su Google Sheets")
+    except Exception as e:
+        print(f"❌ Errore salvataggio su Google Sheets: {e}")
 
 def genera_pdf(corsa_data):
     """Genera un PDF non modificabile della corsa"""
-    
     autista = corsa_data["autista"]
     cartella_autista = os.path.join(FURGONI_FOLDER, autista)
-    
-    # Crea la cartella dell'autista se non esiste
     os.makedirs(cartella_autista, exist_ok=True)
     
-    # Nome file: data_ora_inizio_autista.pdf
     timestamp = corsa_data["data_ora_partenza"].replace(" ", "_").replace(":", "-")
     pdf_filename = f"{timestamp}_{autista}.pdf"
     pdf_path = os.path.join(cartella_autista, pdf_filename)
     
-    # Crea il documento PDF
     doc = SimpleDocTemplate(pdf_path, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Titolo
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
         textColor=colors.HexColor('#1f4788'),
         spaceAfter=20,
-        alignment=1  # Centro
+        alignment=1
     )
     elements.append(Paragraph("Rapporto Corsa Furgone", title_style))
     elements.append(Spacer(1, 0.2*inch))
     
-    # Dati della corsa in tabella
     data = [
         ["Campo", "Valore"],
         ["Data/Ora Partenza", corsa_data["data_ora_partenza"]],
@@ -71,30 +105,18 @@ def genera_pdf(corsa_data):
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
     ]))
     
     elements.append(table)
     elements.append(Spacer(1, 0.3*inch))
     
-    # Footer con timestamp di generazione
     footer_text = f"Documento generato il: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    footer_style = ParagraphStyle(
-        'Footer',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor=colors.grey,
-        alignment=2  # Destra
-    )
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=2)
     elements.append(Paragraph(footer_text, footer_style))
     
-    # Costruisci il PDF (read-only per impostazione)
     doc.build(elements)
-    
     print(f"✅ PDF generato: {pdf_path}")
     return pdf_path
-
 
 @app.route("/", methods=["GET", "POST"])
 def registra_uscita():
@@ -108,7 +130,6 @@ def registra_uscita():
             targa = request.form.get("targa", "").strip()
             partenza = request.form.get("partenza", "").strip()
             km_partenza = request.form.get("km_partenza", "").strip()
-
             data_ora_partenza = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             session["corsa"] = {
@@ -118,7 +139,6 @@ def registra_uscita():
                 "partenza": partenza,
                 "km_partenza": km_partenza,
             }
-
             return redirect("/")
 
         elif azione == "stop" and corsa_in_corso:
@@ -127,8 +147,6 @@ def registra_uscita():
             data_ora_arrivo = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             corsa = session["corsa"]
-
-            # Crea il dizionario completo della corsa
             corsa_completa = {
                 "data_ora_partenza": corsa["data_ora_partenza"],
                 "data_ora_arrivo": data_ora_arrivo,
@@ -140,36 +158,18 @@ def registra_uscita():
                 "km_arrivo": km_arrivo,
             }
 
-            # 1. Salva su CSV
-            with open(FILE_LOG, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    corsa_completa["data_ora_partenza"],
-                    corsa_completa["data_ora_arrivo"],
-                    corsa_completa["autista"],
-                    corsa_completa["targa"],
-                    corsa_completa["partenza"],
-                    corsa_completa["destinazione"],
-                    corsa_completa["km_partenza"],
-                    corsa_completa["km_arrivo"],
-                ])
+            # 1. Salva su Google Sheets
+            salva_su_sheets(corsa_completa)
 
             # 2. Genera PDF
             genera_pdf(corsa_completa)
 
             # Pulisci la sessione
             session.pop("corsa", None)
-
             return redirect("/")
 
     corsa = session.get("corsa")
-
-    return render_template(
-        "form.html",
-        corsa=corsa,
-        corsa_in_corso=bool(corsa),
-    )
-
+    return render_template("form.html", corsa=corsa, corsa_in_corso=bool(corsa))
 
 if __name__ == "__main__":
     print("Avvio Flask su http://0.0.0.0:5000")
