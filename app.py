@@ -1,178 +1,165 @@
-from flask import Flask, render_template, request, redirect, session
-from reportlab.lib.pagesizes import letter
+from flask import Flask, render_template, request, send_file, jsonify, url_for
+from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from datetime import datetime
+from google.oauth2 import service_account
 import gspread
 import os
-from datetime import datetime
-import json
+import io
+from pathlib import Path
 
 app = Flask(__name__)
-app.secret_key = "super-segreto-furgoni-123"
 
-# Configurazione Google
-SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"
-DRIVE_FOLDER_ID = "1Hk-GOKdMts3Qm1qgkt9V58YUoP6Hrshl"
+# Google Sheets setup
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-FURGONI_FOLDER = "furgoni"
+# Load credentials from environment variable
+credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+if credentials_json:
+    import json
+    credentials = service_account.Credentials.from_service_account_info(
+        json.loads(credentials_json),
+        scopes=SCOPES
+    )
+    gc = gspread.authorize(credentials)
+    sheet = gc.open('Uscite Furgoni').sheet1
+else:
+    sheet = None
 
-def carica_pdf_su_drive(pdf_path, filename):
-    """Carica il PDF su Google Drive"""
+# Create uploads directory for storing PDFs
+UPLOAD_FOLDER = Path('/tmp/pdf_uploads')
+UPLOAD_FOLDER.mkdir(exist_ok=True)
+app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
+
+def create_pdf(driver_name, departure_city, km, arrival_city, arrival_address):
+    """Generate PDF and save locally"""
     try:
-        creds_json = os.getenv("GOOGLE_CREDENTIALS")
+        # Create PDF in memory first
+        pdf_buffer = io.BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+        elements = []
         
-        if creds_json:
-            creds_dict = json.loads(creds_json)
-            creds = Credentials.from_service_account_info(
-                creds_dict,
-                scopes=['https://www.googleapis.com/auth/drive']
+        # Styles
+        styles = getSampleStyleSheet()
+        
+        # Title
+        title = Paragraph(f"<b>Uscita Furgone - {driver_name}</b>", styles['Heading1'])
+        elements.append(title)
+        elements.append(Spacer(1, 12))
+        
+        # Data table
+        data = [
+            ['Conducente', driver_name],
+            ['Partenza da', departure_city],
+            ['Km', str(km)],
+            ['Arrivo', arrival_city],
+            ['Indirizzo Arrivo', arrival_address],
+            ['Data', datetime.now().strftime("%d/%m/%Y %H:%M")]
+        ]
+        
+        table = Table(data, colWidths=[200, 300])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.lightblue),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        
+        elements.append(table)
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Save to file locally
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        pdf_filename = f"{driver_name}_{timestamp}.pdf"
+        pdf_path = UPLOAD_FOLDER / pdf_filename
+        
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf_buffer.getvalue())
+        
+        print(f"✅ PDF salvato localmente: {pdf_path}")
+        return str(pdf_path), pdf_filename
+        
+    except Exception as e:
+        print(f"❌ Errore nella creazione del PDF: {e}")
+        return None, None
+
+def save_to_sheets(driver_name, departure_city, km, arrival_city, arrival_address):
+    """Save data to Google Sheets"""
+    if not sheet:
+        print("⚠️  Google Sheets non configurato")
+        return
+    
+    try:
+        row = [
+            driver_name,
+            departure_city,
+            km,
+            arrival_city,
+            arrival_address,
+            datetime.now().strftime("%d/%m/%Y %H:%M")
+        ]
+        sheet.append_row(row)
+        print(f"✅ Dati salvati su Google Sheets")
+    except Exception as e:
+        print(f"❌ Errore caricamento su Google Sheets: {e}")
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/submit', methods=['POST'])
+def submit():
+    try:
+        data = request.form
+        driver_name = data.get('driver_name')
+        departure_city = data.get('departure_city')
+        km = data.get('km')
+        arrival_city = data.get('arrival_city')
+        arrival_address = data.get('arrival_address')
+        
+        # Create PDF
+        pdf_path, pdf_filename = create_pdf(driver_name, departure_city, km, arrival_city, arrival_address)
+        
+        # Save to Google Sheets
+        save_to_sheets(driver_name, departure_city, km, arrival_city, arrival_address)
+        
+        if pdf_path:
+            # Return success with download link
+            return jsonify({
+                'success': True,
+                'message': 'PDF generato con successo!',
+                'pdf_url': url_for('download_pdf', filename=pdf_filename)
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Errore nella generazione del PDF'})
+            
+    except Exception as e:
+        print(f"❌ Errore: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/download/<filename>')
+def download_pdf(filename):
+    """Download PDF file"""
+    try:
+        pdf_path = UPLOAD_FOLDER / filename
+        if pdf_path.exists():
+            return send_file(
+                pdf_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/pdf'
             )
         else:
-            creds = Credentials.from_service_account_file(
-                "credentials.json",
-                scopes=['https://www.googleapis.com/auth/drive']
-            )
-        
-        drive_service = build('drive', 'v3', credentials=creds)
-        
-        # Carica il file su Drive
-        file_metadata = {
-            'name': filename,
-            'parents': [DRIVE_FOLDER_ID]
-        }
-        media = MediaFileUpload(pdf_path, mimetype='application/pdf')
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
-        
-        print(f"✅ PDF caricato su Google Drive: {filename}")
-        return file.get('id')
+            return jsonify({'error': 'File non trovato'}), 404
     except Exception as e:
-        print(f"❌ Errore caricamento su Google Drive: {e}")
-        return None
+        return jsonify({'error': str(e)}), 500
 
-def genera_pdf(corsa_data):
-    """Genera un PDF non modificabile della corsa"""
-    autista = corsa_data["autista"]
-    cartella_autista = os.path.join(FURGONI_FOLDER, autista)
-    os.makedirs(cartella_autista, exist_ok=True)
-    
-    timestamp = corsa_data["data_ora_partenza"].replace(" ", "_").replace(":", "-")
-    pdf_filename = f"{timestamp}_{autista}.pdf"
-    pdf_path = os.path.join(cartella_autista, pdf_filename)
-    
-    doc = SimpleDocTemplate(pdf_path, pagesize=letter)
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1f4788'),
-        spaceAfter=20,
-        alignment=1
-    )
-    elements.append(Paragraph("Rapporto Corsa Furgone", title_style))
-    elements.append(Spacer(1, 0.2*inch))
-    
-    data = [
-        ["Campo", "Valore"],
-        ["Data/Ora Partenza", corsa_data["data_ora_partenza"]],
-        ["Data/Ora Arrivo", corsa_data["data_ora_arrivo"]],
-        ["Autista", corsa_data["autista"]],
-        ["Targa Furgone", corsa_data["targa"]],
-        ["Luogo Partenza", corsa_data["partenza"]],
-        ["Destinazione", corsa_data["destinazione"]],
-        ["KM Partenza", corsa_data["km_partenza"]],
-        ["KM Arrivo", corsa_data["km_arrivo"]],
-        ["KM Percorsi", str(int(corsa_data["km_arrivo"]) - int(corsa_data["km_partenza"]))],
-    ]
-    
-    table = Table(data, colWidths=[2*inch, 4*inch])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4788')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-    
-    elements.append(table)
-    elements.append(Spacer(1, 0.3*inch))
-    
-    footer_text = f"Documento generato il: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=2)
-    elements.append(Paragraph(footer_text, footer_style))
-    
-    doc.build(elements)
-    print(f"✅ PDF generato: {pdf_path}")
-    
-    # Carica su Drive
-    carica_pdf_su_drive(pdf_path, pdf_filename)
-    
-    return pdf_path
-
-@app.route("/", methods=["GET", "POST"])
-def registra_uscita():
-    corsa_in_corso = "corsa" in session
-
-    if request.method == "POST":
-        azione = request.form.get("azione")
-
-        if azione == "start":
-            autista = request.form.get("autista", "").strip()
-            targa = request.form.get("targa", "").strip()
-            partenza = request.form.get("partenza", "").strip()
-            km_partenza = request.form.get("km_partenza", "").strip()
-            data_ora_partenza = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            session["corsa"] = {
-                "data_ora_partenza": data_ora_partenza,
-                "autista": autista,
-                "targa": targa,
-                "partenza": partenza,
-                "km_partenza": km_partenza,
-            }
-            return redirect("/")
-
-        elif azione == "stop" and corsa_in_corso:
-            destinazione = request.form.get("destinazione", "").strip()
-            km_arrivo = request.form.get("km_arrivo", "").strip()
-            data_ora_arrivo = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            corsa = session["corsa"]
-            corsa_completa = {
-                "data_ora_partenza": corsa["data_ora_partenza"],
-                "data_ora_arrivo": data_ora_arrivo,
-                "autista": corsa["autista"],
-                "targa": corsa["targa"],
-                "partenza": corsa["partenza"],
-                "destinazione": destinazione,
-                "km_partenza": corsa["km_partenza"],
-                "km_arrivo": km_arrivo,
-            }
-
-            # Genera PDF e carica su Drive
-            genera_pdf(corsa_completa)
-
-            # Pulisci la sessione
-            session.pop("corsa", None)
-            return redirect("/")
-
-    corsa = session.get("corsa")
-    return render_template("form.html", corsa=corsa, corsa_in_corso=bool(corsa))
-
-if __name__ == "__main__":
-    print("Avvio Flask su http://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=int(os.getenv('PORT', 10000)))
