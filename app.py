@@ -17,23 +17,20 @@ from email import encoders
 from datetime import datetime
 
 app = Flask(__name__)
-# Chiave segreta per le sessioni (usa una variabile d'ambiente su Render per sicurezza)
-app.secret_key = os.getenv("SECRET_KEY", "furgoni-secret-2026")
+app.secret_key = os.getenv("SECRET_KEY", "furgoni-2026-secure")
 
-# Configurazione IDs
+# Configurazione IDs dalle variabili d'ambiente di Render
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "1Hk-GOKdMts3Qm1qgkt9V58YUoP6Hrshl")
 DESTINATARIO_EMAIL = "valerio121291@hotmail.it" 
-
-# Cartella temporanea per Render
 TEMP_FOLDER = "/tmp/furgoni"
 
 def invia_email_gmail(pdf_path, filename):
-    """Invia il PDF tramite il server SMTP di Gmail"""
-    mittente = os.getenv("GMAIL_USER") # pvalerio910@gmail.com
-    password = os.getenv("GMAIL_PASS") # Password per le app di 16 lettere
+    """Invia il PDF tramite Gmail usando una Password per le App"""
+    mittente = os.getenv("GMAIL_USER")
+    password = os.getenv("GMAIL_PASS")
 
     if not mittente or not password:
-        print("⚠️ Errore: Credenziali GMAIL_USER o GMAIL_PASS non trovate.")
+        print("⚠️ Errore: Credenziali Gmail (USER o PASS) non trovate.")
         return
 
     msg = MIMEMultipart()
@@ -41,7 +38,7 @@ def invia_email_gmail(pdf_path, filename):
     msg['To'] = DESTINATARIO_EMAIL
     msg['Subject'] = f"🚚 Rapporto Corsa: {filename}"
 
-    corpo = f"Ciao Valerio,\n\nIn allegato trovi il PDF della corsa completata in data {datetime.now().strftime('%d/%m/%Y')}."
+    corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}."
     msg.attach(MIMEText(corpo, 'plain'))
 
     try:
@@ -52,7 +49,6 @@ def invia_email_gmail(pdf_path, filename):
             part.add_header('Content-Disposition', f"attachment; filename= {filename}")
             msg.attach(part)
 
-        # Connessione al server Gmail
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(mittente, password)
@@ -63,21 +59,30 @@ def invia_email_gmail(pdf_path, filename):
         print(f"❌ Errore critico invio email: {e}")
 
 def carica_pdf_su_drive(pdf_path, filename):
-    """Carica il file PDF su Google Drive"""
+    """Carica il PDF su Drive risolvendo l'errore di quota (403)"""
     try:
         creds_json = os.getenv("GOOGLE_CREDENTIALS")
-        if creds_json:
-            creds_dict = json.loads(creds_json)
-            creds = Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive'])
-        else:
-            # Fallback locale
-            creds = Credentials.from_service_account_file("credentials.json", scopes=['https://www.googleapis.com/auth/drive'])
-        
+        if not creds_json:
+            print("⚠️ Errore: GOOGLE_CREDENTIALS non trovate.")
+            return None
+
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive'])
         drive_service = build('drive', 'v3', credentials=creds)
         
-        file_metadata = {'name': filename, 'parents': [DRIVE_FOLDER_ID]}
+        file_metadata = {
+            'name': filename, 
+            'parents': [DRIVE_FOLDER_ID]
+        }
         media = MediaFileUpload(pdf_path, mimetype='application/pdf')
-        file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        
+        # supportsAllDrives=True permette di usare lo spazio del proprietario della cartella
+        file = drive_service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            fields='id',
+            supportsAllDrives=True 
+        ).execute()
         
         print(f"✅ PDF caricato su Google Drive. ID: {file.get('id')}")
         return file.get('id')
@@ -86,7 +91,7 @@ def carica_pdf_su_drive(pdf_path, filename):
         return None
 
 def genera_pdf(corsa_data):
-    """Crea il documento PDF e avvia invio/caricamento"""
+    """Genera il file PDF e attiva invio email e caricamento Drive"""
     if not os.path.exists(TEMP_FOLDER):
         os.makedirs(TEMP_FOLDER)
     
@@ -98,22 +103,28 @@ def genera_pdf(corsa_data):
     elements = []
     styles = getSampleStyleSheet()
     
-    title = Paragraph("RAPPORTO USCITA FURGONE", styles['Heading1'])
-    elements.append(title)
+    elements.append(Paragraph("RAPPORTO USCITA FURGONE", styles['Heading1']))
     elements.append(Spacer(1, 12))
     
-    km_percorsi = int(corsa_data["km_arrivo"]) - int(corsa_data["km_partenza"])
+    # Calcolo KM con gestione errori se l'utente inserisce testo
+    try:
+        km_p = int(corsa_data["km_partenza"])
+        km_a = int(corsa_data["km_arrivo"])
+        km_tot = km_a - km_p
+    except:
+        km_tot = "Errore dati"
+
     table_data = [
         ["DESCRIZIONE", "DETTAGLIO"],
         ["Autista", corsa_data["autista"]],
-        ["Furgone", corsa_data["targa"]],
-        ["Partenza", corsa_data["partenza"]],
+        ["Targa Furgone", corsa_data["targa"]],
+        ["Luogo Partenza", corsa_data["partenza"]],
         ["Destinazione", corsa_data["destinazione"]],
         ["KM Partenza", corsa_data["km_partenza"]],
         ["KM Arrivo", corsa_data["km_arrivo"]],
-        ["Totale KM", str(km_percorsi)],
-        ["Inizio", corsa_data["data_ora_partenza"]],
-        ["Fine", corsa_data["data_ora_arrivo"]]
+        ["Totale KM", str(km_tot)],
+        ["Ora Inizio", corsa_data["data_ora_partenza"]],
+        ["Ora Fine", corsa_data["data_ora_arrivo"]]
     ]
     
     t = Table(table_data, colWidths=[2*inch, 3.5*inch])
@@ -121,12 +132,14 @@ def genera_pdf(corsa_data):
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
     ]))
     elements.append(t)
     doc.build(elements)
     
-    # Esegue le azioni dopo la creazione del file
+    # Avvia i processi esterni
     carica_pdf_su_drive(pdf_path, pdf_filename)
     invia_email_gmail(pdf_path, pdf_filename)
     
