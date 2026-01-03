@@ -5,57 +5,57 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from google.oauth2.service_account import Credentials
-from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 import gspread
 import os
 from datetime import datetime
-import io
+import json
 
 app = Flask(__name__)
 app.secret_key = "super-segreto-furgoni-123"
 
-# Configurazione Google Sheets
-SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"  # ← AGGIORNA CON TUO ID
-SHEET_NAME = "Foglio1"
+# Configurazione Google
+SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"
+DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"  # ← METTI L'ID DELLA CARTELLA DRIVE QUI
 FURGONI_FOLDER = "furgoni"
 
-# Carica le credenziali da variabile d'ambiente o file
-def get_sheets_client():
-    """Ottiene un client di Google Sheets autenticato"""
-    creds_json = os.getenv("GOOGLE_CREDENTIALS")
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-    
-    if creds_json:
-        import json
-        creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    else:
-        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    
-    gc = gspread.authorize(creds)
-    return gc
-
-
-def salva_su_sheets(dati_corsa):
-    """Salva i dati della corsa su Google Sheets"""
+def carica_pdf_su_drive(pdf_path, filename):
+    """Carica il PDF su Google Drive"""
     try:
-        gc = get_sheets_client()
-        sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
+        creds_json = os.getenv("GOOGLE_CREDENTIALS")
         
-        # Aggiungi la riga ai dati del foglio
-        sheet.append_row([
-            dati_corsa["data_ora_partenza"],
-            dati_corsa["data_ora_arrivo"],
-            dati_corsa["autista"],
-            dati_corsa["targa"],
-            dati_corsa["partenza"],
-            dati_corsa["destinazione"],
-            dati_corsa["km_partenza"],
-            dati_corsa["km_arrivo"],
-        ])
-        print("✅ Dati salvati su Google Sheets")
+        if creds_json:
+            creds_dict = json.loads(creds_json)
+            creds = Credentials.from_service_account_info(
+                creds_dict,
+                scopes=['https://www.googleapis.com/auth/drive']
+            )
+        else:
+            creds = Credentials.from_service_account_file(
+                "credentials.json",
+                scopes=['https://www.googleapis.com/auth/drive']
+            )
+        
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        # Carica il file su Drive
+        file_metadata = {
+            'name': filename,
+            'parents': [DRIVE_FOLDER_ID]
+        }
+        media = MediaFileUpload(pdf_path, mimetype='application/pdf')
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        print(f"✅ PDF caricato su Google Drive: {filename}")
+        return file.get('id')
     except Exception as e:
-        print(f"❌ Errore salvataggio su Google Sheets: {e}")
+        print(f"❌ Errore caricamento su Google Drive: {e}")
+        return None
 
 def genera_pdf(corsa_data):
     """Genera un PDF non modificabile della corsa"""
@@ -116,6 +116,10 @@ def genera_pdf(corsa_data):
     
     doc.build(elements)
     print(f"✅ PDF generato: {pdf_path}")
+    
+    # Carica su Drive
+    carica_pdf_su_drive(pdf_path, pdf_filename)
+    
     return pdf_path
 
 @app.route("/", methods=["GET", "POST"])
@@ -158,10 +162,7 @@ def registra_uscita():
                 "km_arrivo": km_arrivo,
             }
 
-            # 1. Salva su Google Sheets
-            salva_su_sheets(corsa_completa)
-
-            # 2. Genera PDF
+            # Genera PDF e carica su Drive
             genera_pdf(corsa_completa)
 
             # Pulisci la sessione
