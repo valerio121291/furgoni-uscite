@@ -23,18 +23,18 @@ FURGONI_FOLDER = "furgoni"
 def get_sheets_client():
     """Ottiene un client di Google Sheets autenticato"""
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
     
     if creds_json:
-        # Se le credenziali sono in env (Render)
         import json
         creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     else:
-        # Se le credenziali sono in un file locale
-        creds = Credentials.from_service_account_file("credentials.json")
+        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
     
     gc = gspread.authorize(creds)
     return gc
+
 
 def salva_su_sheets(dati_corsa):
     """Salva i dati della corsa su Google Sheets"""
