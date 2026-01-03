@@ -13,23 +13,28 @@ from email import encoders
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "furgoni-2026-secure-v3")
+# Chiave segreta per gestire la sessione (inizio/fine corsa)
+app.secret_key = os.getenv("SECRET_KEY", "furgoni-2026-valerio-v4")
 
 DESTINATARIO_EMAIL = "valerio121291@hotmail.it" 
 TEMP_FOLDER = "/tmp/furgoni"
+
 def invia_email_gmail(pdf_path, filename):
+    """Invia il PDF tramite Gmail usando la porta 587 (TLS)"""
     mittente = os.getenv("GMAIL_USER")
     password = os.getenv("GMAIL_PASS")
 
     if not mittente or not password:
-        print("⚠️ DEBUG: Credenziali Gmail mancanti!")
+        print("⚠️ DEBUG: Credenziali Gmail (USER o PASS) mancanti su Render!")
         return
 
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = DESTINATARIO_EMAIL
-    msg['Subject'] = f"🚚 Rapporto: {filename}"
-    msg.attach(MIMEText("In allegato il rapporto corsa.", 'plain'))
+    msg['Subject'] = f"🚚 Rapporto Furgoni: {filename}"
+
+    corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}."
+    msg.attach(MIMEText(corpo, 'plain'))
 
     try:
         with open(pdf_path, "rb") as attachment:
@@ -39,17 +44,20 @@ def invia_email_gmail(pdf_path, filename):
             part.add_header('Content-Disposition', f"attachment; filename= {filename}")
             msg.attach(part)
 
-        print("DEBUG: Tentativo connessione SMTP...")
-        # Usiamo SSL (Porta 465) che è più stabile su Render rispetto a TLS
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
-            server.login(mittente, password)
-            server.send_message(msg)
-        print(f"✅ Email inviata con successo!")
+        print("DEBUG: Tentativo connessione SMTP (Porta 587)...")
+        # Connessione SMTP standard con TLS
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
+        server.set_debuglevel(1) # Questo mostrerà più dettagli nei log di Render
+        server.starttls() 
+        server.login(mittente, password)
+        server.send_message(msg)
+        server.quit()
+        print(f"✅ Email inviata con successo a {DESTINATARIO_EMAIL}")
     except Exception as e:
         print(f"❌ Errore SMTP: {e}")
 
-
 def genera_pdf(corsa_data):
+    """Genera il file PDF nella cartella temporanea"""
     if not os.path.exists(TEMP_FOLDER):
         os.makedirs(TEMP_FOLDER)
     
@@ -67,7 +75,7 @@ def genera_pdf(corsa_data):
     try:
         km_tot = int(corsa_data["km_arrivo"]) - int(corsa_data["km_partenza"])
     except:
-        km_tot = "N/D"
+        km_tot = "Dato non valido"
 
     table_data = [
         ["VOCE", "DETTAGLIO"],
@@ -78,7 +86,7 @@ def genera_pdf(corsa_data):
         ["KM Inizio", corsa_data["km_partenza"]],
         ["KM Fine", corsa_data["km_arrivo"]],
         ["Totale KM", str(km_tot)],
-        ["Data Ora", corsa_data["data_ora_arrivo"]]
+        ["Ora Fine", corsa_data["data_ora_arrivo"]]
     ]
     
     t = Table(table_data, colWidths=[1.5*inch, 4*inch])
@@ -91,14 +99,15 @@ def genera_pdf(corsa_data):
     elements.append(t)
     doc.build(elements)
     
-    # Esegui SOLO l'invio email per ora
+    # Avvia l'invio dell'email
     invia_email_gmail(pdf_path, pdf_filename)
     return pdf_path
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
-        print(f"DEBUG: Ricevuta azione {azione}") # Questo apparirà nei log
+        print(f"DEBUG: Ricevuta azione {azione}")
         
         if azione == "start":
             session["corsa"] = {
@@ -108,7 +117,6 @@ def index():
                 "km_partenza": request.form.get("km_partenza"),
                 "data_ora_partenza": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
-            print("DEBUG: Corsa iniziata correttamente")
         
         elif azione == "stop" and "corsa" in session:
             corsa = session.pop("corsa")
@@ -117,17 +125,12 @@ def index():
                 "km_arrivo": request.form.get("km_arrivo"),
                 "data_ora_arrivo": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
-            print(f"DEBUG: Tentativo generazione PDF per {corsa['autista']}")
-            try:
-                genera_pdf(corsa)
-                print("✅ DEBUG: Funzione genera_pdf completata")
-            except Exception as e:
-                print(f"❌ DEBUG: Errore durante genera_pdf: {e}")
+            print(f"DEBUG: Avvio generazione PDF e Invio Email...")
+            genera_pdf(corsa)
         
         return redirect("/")
     
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
