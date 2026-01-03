@@ -17,37 +17,33 @@ from email import encoders
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "furgoni-valerio-2026-v6")
+app.secret_key = os.getenv("SECRET_KEY", "furgoni-valerio-final-v7")
 
-# Configurazioni da Render
+# CONFIGURAZIONI
 DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "1Hk-GOKdMts3Qm1qgkt9V58YUoP6Hrshl")
-DESTINATARIO_EMAIL = "valerio121291@hotmail.it" 
+EMAIL_PROPRIETARIO = "pvalerio910@gmail.com"
+DESTINATARIO_HOTMAIL = "valerio121291@hotmail.it"
 TEMP_FOLDER = "/tmp/furgoni"
 
-def invia_email_gmail_api(pdf_path, filename):
-    """Invia email tramite API Google (Porta 443) per evitare blocchi SMTP di Render"""
-    try:
-        creds_json = os.getenv("GOOGLE_CREDENTIALS")
-        if not creds_json:
-            print("⚠️ DEBUG: GOOGLE_CREDENTIALS mancanti!")
-            return
+def ottieni_credenziali(scopes):
+    """Ottiene le credenziali delegando l'autorità all'utente principale"""
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    if not creds_json:
+        return None
+    creds_dict = json.loads(creds_json)
+    base_creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    # Delega: il robot agisce come te per avere spazio Drive e casella Gmail
+    return base_creds.with_subject(EMAIL_PROPRIETARIO)
 
-        creds_dict = json.loads(creds_json)
-        # Scopes per Gmail e Drive
-        scopes = [
-            'https://www.googleapis.com/auth/gmail.send',
-            'https://www.googleapis.com/auth/drive.file'
-        ]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+def invia_email_gmail_api(pdf_path, filename):
+    try:
+        creds = ottieni_credenziali(['https://www.googleapis.com/auth/gmail.send'])
+        service = build('gmail', 'v1', credentials=creds)
         
-        # Creazione del messaggio
         message = MIMEMultipart()
-        message['to'] = DESTINATARIO_EMAIL
-        message['from'] = "Sistema Furgoni <pvalerio910@gmail.com>"
+        message['to'] = DESTINATARIO_HOTMAIL
         message['subject'] = f"🚚 Rapporto Corsa: {filename}"
-        
-        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}."
-        message.attach(MIMEText(corpo, 'plain'))
+        message.attach(MIMEText("In allegato il rapporto PDF della corsa.", 'plain'))
 
         with open(pdf_path, "rb") as attachment:
             part = MIMEBase('application', 'octet-stream')
@@ -56,42 +52,26 @@ def invia_email_gmail_api(pdf_path, filename):
             part.add_header('Content-Disposition', f"attachment; filename= {filename}")
             message.attach(part)
 
-        # Codifica per API Gmail
-        service = build('gmail', 'v1', credentials=creds)
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        
-        # Invio (userId='me' si riferisce all'account di servizio)
         service.users().messages().send(userId="me", body={'raw': raw_message}).execute()
-        print(f"✅ Email inviata con successo tramite API a {DESTINATARIO_EMAIL}")
+        print("✅ Email inviata con successo tramite API Delegata!")
     except Exception as e:
         print(f"❌ Errore API Gmail: {e}")
 
 def carica_pdf_su_drive(pdf_path, filename):
-    """Carica il PDF su Google Drive usando i permessi del Service Account"""
     try:
-        creds_json = os.getenv("GOOGLE_CREDENTIALS")
-        creds_dict = json.loads(creds_json)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive.file'])
+        creds = ottieni_credenziali(['https://www.googleapis.com/auth/drive.file'])
         service = build('drive', 'v3', credentials=creds)
         
-        file_metadata = {
-            'name': filename, 
-            'parents': [DRIVE_FOLDER_ID]
-        }
+        file_metadata = {'name': filename, 'parents': [DRIVE_FOLDER_ID]}
         media = MediaFileUpload(pdf_path, mimetype='application/pdf')
         
-        file = service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        print(f"✅ PDF caricato su Drive. ID: {file.get('id')}")
+        service.files().create(body=file_metadata, media_body=media).execute()
+        print("✅ PDF caricato su Drive (Spazio Personale)!")
     except Exception as e:
         print(f"❌ Errore Drive: {e}")
 
 def genera_pdf(corsa_data):
-    """Genera il file PDF e avvia invio email e caricamento Drive"""
     if not os.path.exists(TEMP_FOLDER):
         os.makedirs(TEMP_FOLDER)
     
@@ -102,23 +82,22 @@ def genera_pdf(corsa_data):
     doc = SimpleDocTemplate(pdf_path, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
-    
     elements.append(Paragraph(f"RAPPORTO USCITA: {corsa_data['autista']}", styles['Heading1']))
     elements.append(Spacer(1, 12))
     
     try:
         km_tot = int(corsa_data["km_arrivo"]) - int(corsa_data["km_partenza"])
     except:
-        km_tot = "Errore dati"
+        km_tot = "N/D"
 
     table_data = [
         ["VOCE", "DETTAGLIO"],
         ["Autista", corsa_data["autista"]],
         ["Targa", corsa_data["targa"]],
-        ["KM Partenza", corsa_data["km_partenza"]],
-        ["KM Arrivo", corsa_data["km_arrivo"]],
+        ["KM Inizio", corsa_data["km_partenza"]],
+        ["KM Fine", corsa_data["km_arrivo"]],
         ["Totale KM", str(km_tot)],
-        ["Chiusura Rapporto", corsa_data["data_ora_arrivo"]]
+        ["Data/Ora", corsa_data["data_ora_arrivo"]]
     ]
     
     t = Table(table_data, colWidths=[1.5*inch, 4*inch])
@@ -131,10 +110,8 @@ def genera_pdf(corsa_data):
     elements.append(t)
     doc.build(elements)
     
-    # Esegue le funzioni finali
     invia_email_gmail_api(pdf_path, pdf_filename)
     carica_pdf_su_drive(pdf_path, pdf_filename)
-    
     return pdf_path
 
 @app.route("/", methods=["GET", "POST"])
