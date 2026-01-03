@@ -17,7 +17,8 @@ app.secret_key = "super-segreto-furgoni-123"
 
 # Configurazione Google
 SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"
-DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"  # ← METTI L'ID DELLA CARTELLA DRIVE QUI
+DRIVE_FOLDER_ID = "1Hk-GOKdMts3Qm1qgkt9V58YUoP6Hrshl"
+
 FURGONI_FOLDER = "furgoni"
 
 def carica_pdf_su_drive(pdf_path, filename):
