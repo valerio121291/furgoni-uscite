@@ -20,21 +20,18 @@ DESTINATARIO_EMAIL = "valerio121291@hotmail.it"
 TEMP_FOLDER = "/tmp/furgoni"
 
 def invia_email_gmail(pdf_path, filename):
-    """Invia il PDF tramite Gmail usando la porta 587 (TLS)"""
     mittente = os.getenv("GMAIL_USER")
     password = os.getenv("GMAIL_PASS")
 
     if not mittente or not password:
-        print("⚠️ DEBUG: Credenziali Gmail (USER o PASS) mancanti su Render!")
+        print("⚠️ DEBUG: Credenziali mancanti!")
         return
 
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = DESTINATARIO_EMAIL
-    msg['Subject'] = f"🚚 Rapporto Furgoni: {filename}"
-
-    corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}."
-    msg.attach(MIMEText(corpo, 'plain'))
+    msg['Subject'] = f"🚚 Rapporto: {filename}"
+    msg.attach(MIMEText("In allegato il rapporto corsa.", 'plain'))
 
     try:
         with open(pdf_path, "rb") as attachment:
@@ -45,17 +42,15 @@ def invia_email_gmail(pdf_path, filename):
             msg.attach(part)
 
         print("DEBUG: Tentativo connessione SMTP (Porta 587)...")
-        # Connessione SMTP standard con TLS
+        # Cambiamo in SMTP standard (non SSL) per poi attivare il TLS
         server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
-        server.set_debuglevel(1) # Questo mostrerà più dettagli nei log di Render
-        server.starttls() 
+        server.starttls() # Questa riga "apre" la sicurezza sulla porta 587
         server.login(mittente, password)
         server.send_message(msg)
         server.quit()
-        print(f"✅ Email inviata con successo a {DESTINATARIO_EMAIL}")
+        print(f"✅ Email inviata con successo!")
     except Exception as e:
         print(f"❌ Errore SMTP: {e}")
-
 def genera_pdf(corsa_data):
     """Genera il file PDF nella cartella temporanea"""
     if not os.path.exists(TEMP_FOLDER):
