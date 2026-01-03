@@ -17,22 +17,19 @@ app.secret_key = os.getenv("SECRET_KEY", "furgoni-2026-secure-v3")
 
 DESTINATARIO_EMAIL = "valerio121291@hotmail.it" 
 TEMP_FOLDER = "/tmp/furgoni"
-
 def invia_email_gmail(pdf_path, filename):
     mittente = os.getenv("GMAIL_USER")
     password = os.getenv("GMAIL_PASS")
 
     if not mittente or not password:
-        print("⚠️ Errore: Credenziali Gmail mancanti nelle variabili d'ambiente.")
+        print("⚠️ DEBUG: Credenziali Gmail mancanti!")
         return
 
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = DESTINATARIO_EMAIL
-    msg['Subject'] = f"🚚 Rapporto Furgoni: {filename}"
-
-    corpo = f"Rapporto della corsa terminata il {datetime.now().strftime('%d/%m/%Y %H:%M')}."
-    msg.attach(MIMEText(corpo, 'plain'))
+    msg['Subject'] = f"🚚 Rapporto: {filename}"
+    msg.attach(MIMEText("In allegato il rapporto corsa.", 'plain'))
 
     try:
         with open(pdf_path, "rb") as attachment:
@@ -42,13 +39,15 @@ def invia_email_gmail(pdf_path, filename):
             part.add_header('Content-Disposition', f"attachment; filename= {filename}")
             msg.attach(part)
 
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
+        print("DEBUG: Tentativo connessione SMTP...")
+        # Usiamo SSL (Porta 465) che è più stabile su Render rispetto a TLS
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15) as server:
             server.login(mittente, password)
             server.send_message(msg)
-        print(f"✅ Email inviata con successo a {DESTINATARIO_EMAIL}")
+        print(f"✅ Email inviata con successo!")
     except Exception as e:
-        print(f"❌ Errore invio email: {e}")
+        print(f"❌ Errore SMTP: {e}")
+
 
 def genera_pdf(corsa_data):
     if not os.path.exists(TEMP_FOLDER):
