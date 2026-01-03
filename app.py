@@ -95,11 +95,12 @@ def genera_pdf(corsa_data):
     # Esegui SOLO l'invio email per ora
     invia_email_gmail(pdf_path, pdf_filename)
     return pdf_path
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
+        print(f"DEBUG: Ricevuta azione {azione}") # Questo apparirà nei log
+        
         if azione == "start":
             session["corsa"] = {
                 "autista": request.form.get("autista"),
@@ -108,6 +109,8 @@ def index():
                 "km_partenza": request.form.get("km_partenza"),
                 "data_ora_partenza": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
+            print("DEBUG: Corsa iniziata correttamente")
+        
         elif azione == "stop" and "corsa" in session:
             corsa = session.pop("corsa")
             corsa.update({
@@ -115,9 +118,17 @@ def index():
                 "km_arrivo": request.form.get("km_arrivo"),
                 "data_ora_arrivo": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
-            genera_pdf(corsa)
+            print(f"DEBUG: Tentativo generazione PDF per {corsa['autista']}")
+            try:
+                genera_pdf(corsa)
+                print("✅ DEBUG: Funzione genera_pdf completata")
+            except Exception as e:
+                print(f"❌ DEBUG: Errore durante genera_pdf: {e}")
+        
         return redirect("/")
+    
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
