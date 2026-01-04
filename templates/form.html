@@ -19,47 +19,14 @@
     .info { background: #eff6ff; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; color: #1d4ed8; margin-bottom: 14px; border-left: 4px solid #2563eb; }
     .muted { color: #6b7280; font-size: 0.85rem; }
     
-    /* Stile per la sezione WhatsApp */
-    .wa-card { 
-      background: #e3f2fd; 
-      border: 2px solid #25D366; 
-      border-radius: 12px; 
-      padding: 16px; 
-      text-align: center; 
-      margin-bottom: 20px; 
-      animation: popIn 0.3s ease-out;
-    }
-    .btn-wa { 
-      background-color: #25D366; 
-      color: white; 
-      padding: 14px 20px; 
-      text-decoration: none; 
-      font-weight: bold; 
-      border-radius: 8px; 
-      display: inline-block; 
-      margin-top: 10px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    @keyframes popIn {
-      0% { transform: scale(0.9); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
-    }
+    /* Animazione caricamento */
+    #loading { display: none; text-align: center; margin-top: 15px; color: #f97316; font-weight: bold; }
   </style>
 </head>
 <body>
   <div class="app-container">
     <div class="card">
       <h2>Registra corsa furgone</h2>
-
-      {% if link_wa %}
-        <div class="wa-card">
-          <h3 style="margin:0; color: #075E54;">✅ Corsa Salvata!</h3>
-          <p style="font-size: 0.9rem; color: #374151; margin: 8px 0;">I dati sono su Excel. Ora invia il riepilogo a Valerio:</p>
-          <a href="{{ link_wa }}" target="_blank" class="btn-wa">
-            📲 INVIA SU WHATSAPP
-          </a>
-        </div>
-      {% endif %}
 
       {% if corsa_in_corso and corsa %}
         <div class="info">
@@ -70,7 +37,7 @@
         </div>
       {% endif %}
 
-      <form method="post">
+      <form method="post" id="main-form">
         {% if not corsa_in_corso %}
           <div class="field-group">
             <span class="field-label">Autista</span>
@@ -80,6 +47,7 @@
               <option value="Costantino">Costantino</option>
               <option value="Simone">Simone</option>
               <option value="Stefano">Stefano</option>
+              <option value="Daniele">Daniele</option>
             </select>
           </div>
 
@@ -165,13 +133,21 @@
             </div>
           </div>
 
-          <button class="btn-secondary" type="submit" name="azione" value="stop">Fine corsa</button>
+          <button class="btn-secondary" type="submit" name="azione" value="stop" onclick="showLoading()">Fine corsa</button>
+          <div id="loading">⏳ Generazione PDF in corso...</div>
         {% endif %}
       </form>
     </div>
   </div>
 
   <script>
+    function showLoading() {
+      // Mostra il testo di caricamento dopo il click
+      setTimeout(function() {
+        document.getElementById('loading').style.display = 'block';
+      }, 100);
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
       const select = document.getElementById("targa-select");
       const info = document.getElementById("truck-text");
