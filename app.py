@@ -15,21 +15,23 @@ from email import encoders
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
-# Caricamento Variabili Ambiente
+# Caricamento Variabili Ambiente da Render
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_PASS = os.getenv("GMAIL_PASS")
+GMAIL_USER = os.getenv("GMAIL_USER")  # La tua email Outlook
+GMAIL_PASS = os.getenv("GMAIL_PASS")  # La tua password app snuozokkvcrutrsp
 
 def invia_email_veloce(dati, pdf_content):
-    """Funzione dedicata all'invio email tramite Outlook/Office365"""
-    print(f"--- [EMAIL] Avvio procedura per {GMAIL_USER} ---")
+    """Invio tramite SSL (Porta 465) - Più stabile su server Cloud"""
+    print(f"--- [EMAIL] Tentativo invio a {GMAIL_USER} via SSL ---")
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = GMAIL_USER 
         msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
-        msg.attach(MIMEText(f"Rapporto automatico per la corsa di {dati['autista']}.", 'plain'))
+        
+        corpo = f"Rapporto automatico generato per {dati['autista']}.\nData: {dati['data_a']}"
+        msg.attach(MIMEText(corpo, 'plain'))
 
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(pdf_content)
@@ -37,20 +39,17 @@ def invia_email_veloce(dati, pdf_content):
         part.add_header('Content-Disposition', f"attachment; filename=Rapporto_{dati['autista']}.pdf")
         msg.attach(part)
 
-        # Connessione SMTP Outlook
-        print("--- [EMAIL] Connessione al server Outlook... ---")
-        with smtplib.SMTP("smtp.office365.com", 587, timeout=30) as server:
-            server.ehlo()
-            server.starttls()
+        # Connessione SSL diretta su porta 465
+        with smtplib.SMTP_SSL("smtp.office365.com", 465, timeout=30) as server:
             server.login(GMAIL_USER, GMAIL_PASS)
             server.send_message(msg)
         
-        print("✅ [EMAIL] SPEDITA CON SUCCESSO!")
+        print("✅ ✅ ✅ EMAIL SPEDITA CON SUCCESSO!")
     except Exception as e:
         print(f"❌ [EMAIL] ERRORE CRITICO: {e}")
 
-def genera_pdf_veloce(dati):
-    """Genera il PDF in memoria"""
+def genera_pdf_buffer(dati):
+    """Crea il file PDF in memoria"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
@@ -100,8 +99,7 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
-            # 1. Aggiornamento Excel
-            print("--- [LOG] Tentativo scrittura Excel... ---")
+            # 1. Scrittura su Google Sheets
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
@@ -111,14 +109,13 @@ def index():
                     spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H",
                     valueInputOption="RAW", body={'values': values}
                 ).execute()
-                print("✅ [LOG] Excel aggiornato con successo")
+                print("✅ [LOG] Excel aggiornato")
             except Exception as e:
                 print(f"❌ [LOG] Errore Excel: {e}")
 
-            # 2. Generazione e Invio Email in Background
-            print("--- [LOG] Preparazione PDF e avvio Thread Email ---")
-            pdf_content = genera_pdf_veloce(c)
-            # Usiamo un Thread per non far aspettare il browser e non far crashare Render
+            # 2. Generazione PDF e Invio Email in Background
+            pdf_content = genera_pdf_buffer(c)
+            # Avviamo il thread per non bloccare il caricamento della pagina
             email_thread = threading.Thread(target=invia_email_veloce, args=(c, pdf_content))
             email_thread.start()
                 
