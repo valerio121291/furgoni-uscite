@@ -1,3 +1,4 @@
+
 import os, json, io
 from flask import Flask, render_template, request, redirect, session
 from datetime import datetime
@@ -26,7 +27,7 @@ def get_google_services():
     return build('sheets', 'v4', credentials=creds), build('drive', 'v3', credentials=creds)
 
 def salva_pdf_su_drive(dati, drive_service):
-    """Crea un PDF e lo carica forzando i parametri di compatibilità per Service Account"""
+    """Versione con bypass forzato della quota storage"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
@@ -55,16 +56,21 @@ def salva_pdf_su_drive(dati, drive_service):
     buffer.seek(0)
     
     nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf"
-    media = MediaIoBaseUpload(buffer, mimetype='application/pdf')
+    media = MediaIoBaseUpload(buffer, mimetype='application/pdf', resumable=True)
     
-    # PARAMETRI CRITICI: supportsAllDrives=True permette di usare lo spazio della cartella padre
+    file_metadata = {
+        'name': nome_file,
+        'parents': [FOLDER_ID]
+    }
+    
+    # ESECUZIONE CON TUTTI I PARAMETRI DI COMPATIBILITÀ POSSIBILI
     drive_service.files().create(
-        body={'name': nome_file, 'parents': [FOLDER_ID]},
+        body=file_metadata,
         media_body=media,
         fields='id',
-        supportsAllDrives=True
+        supportsAllDrives=True,
+        supportsTeamDrives=True
     ).execute()
-    print(f"✅ PDF caricato con successo nella cartella")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -89,7 +95,7 @@ def index():
             try:
                 sheets_service, drive_service = get_google_services()
                 
-                # 1. Scrittura Excel
+                # 1. Scrittura Excel (Sappiamo che funziona)
                 sheets_service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H",
                     valueInputOption="RAW", body={'values': [[
@@ -98,10 +104,15 @@ def index():
                     ]]}
                 ).execute()
                 
-                # 2. Creazione PDF
-                salva_pdf_su_drive(c, drive_service)
+                # 2. PDF (Messo dentro un altro try per non bloccare tutto se fallisce)
+                try:
+                    salva_pdf_su_drive(c, drive_service)
+                    print("✅ PDF Salvato")
+                except Exception as e_pdf:
+                    print(f"⚠️ Errore solo PDF: {e_pdf}")
+                    
             except Exception as e:
-                print(f"❌ Errore durante il salvataggio: {e}")
+                print(f"❌ Errore generale: {e}")
                 
         return redirect("/")
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
