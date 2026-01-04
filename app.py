@@ -56,7 +56,7 @@ def index():
             furgoni[targa] = {
                 "targa": targa, "stato": "In Viaggio", "posizione": request.form.get("partenza"),
                 "km_p": request.form.get("km_partenza"), "autista": request.form.get("autista"),
-                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 1, "data_p": datetime.now()+ timedelta(hours=1)).strftime("%d/%m/%Y %H:%M")
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
