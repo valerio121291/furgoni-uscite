@@ -2,116 +2,159 @@
 <html lang="it">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Logistica CSA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Centrale Furgoni Valerio</title>
     <style>
-        :root { --bg: #020617; --card: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; }
-        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding-bottom: 120px; overflow-x: hidden; }
-        .header { background: #000; color: var(--accent); padding: 20px; text-align: center; font-weight: 800; border-bottom: 3px solid var(--accent); }
-        .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; }
-        .truck-card { background: var(--card); padding: 15px 5px; border-radius: 12px; text-align: center; border: 1px solid #334155; }
-        .truck-card.In.Viaggio { border-color: var(--warning); box-shadow: 0 0 10px var(--warning); }
-        .truck-card.Libero { border-color: var(--success); }
-        .card { background: var(--card); margin: 15px; padding: 25px; border-radius: 20px; border: 1px solid #334155; }
-        label { display: block; margin-top: 15px; color: var(--accent); font-weight: bold; font-size: 0.8rem; }
-        select, input { width: 100%; padding: 15px; margin-top: 5px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
-        .btn { width: 100%; padding: 20px; margin-top: 25px; border-radius: 15px; border: none; font-weight: bold; color: white; text-transform: uppercase; cursor: pointer; font-size: 1rem; }
-        .btn-start { background: #0284c7; } .btn-next { background: #d97706; } .btn-stop { background: #16a34a; }
-        #voiceBtn { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90px; height: 90px; border-radius: 50%; background: var(--accent); border: 4px solid white; font-size: 40px; z-index: 9999; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(56,189,248,0.8); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; }
+        .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+        .truck-card { background: white; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.75rem; border-top: 4px solid #ccc; }
+        .In.Viaggio { border-top-color: #f97316; }
+        .Libero { border-top-color: #059669; }
+        .main-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        select, input, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 1rem; }
+        button { background: #2563eb; color: white; font-weight: bold; border: none; cursor: pointer; }
+        .btn-stop { background: #059669; }
+        .voice-btn { background: #ef4444; margin-bottom: 15px; }
+        .gps-btn { background: #10b981; color: white; padding: 8px; margin-top: 5px; border-radius: 8px; border: none; font-size: 0.8rem; cursor: pointer; }
+        .info-box { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; border-left: 4px solid #2563eb; }
+        #voice-status { font-size: 0.8rem; text-align: center; color: #666; margin-top: -10px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <div class="header">LOGISTICA CSA</div>
-    
-    <div class="status-container">
-        <div class="truck-card {{ furgoni['GA087CH'].stato }}">🚚<br><strong>GA087CH</strong></div>
-        <div class="truck-card {{ furgoni['GX942TS'].stato }}">🚚🚚<br><strong>GX942TS</strong></div>
-        <div class="truck-card {{ furgoni['GG862HC'].stato }}">🚚🚚🚚<br><strong>GG862HC</strong></div>
+
+    <div class="status-grid">
+        {% for t, info in furgoni.items() %}
+        <div class="truck-card {{ info.stato }}">
+            <strong>{{ t }}</strong><br>
+            {{ info.stato }}<br>
+            📍 {{ info.posizione }}
+        </div>
+        {% endfor %}
     </div>
 
-    <div class="main-container"><div class="card"><form method="post" id="mainForm">
+    <div class="main-card">
         {% if not targa_attiva %}
-            <label>SELEZIONA FURGONE</label>
-            <select name="targa"><option value="GA087CH">GA087CH</option><option value="GX942TS">GX942TS</option><option value="GG862HC">GG862HC</option></select>
-            <label>AUTISTA</label>
-            <select name="autista" id="select_autista"><option>Valerio</option><option>Daniele</option><option>Costantino</option><option>Stefano</option></select>
-            <label>PARTENZA</label>
-            <select name="partenza" id="select_partenza"><option value="Tiburtina">Tiburtina</option><option value="Rieti">Rieti</option><option value="Sede">Sede</option></select>
-            <label>CHILOMETRI INIZIALI</label>
-            <input type="number" name="km_partenza" id="km_input" placeholder="000000">
-            <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
-        {% else %}
-            <div style="text-align:center; padding:10px; background:#0c4a6e; border-radius:10px;"><strong>{{ targa_attiva }}</strong><br><small>Autista: {{ corsa_attiva.autista }}</small></div>
-            <input type="hidden" name="targa" value="{{ targa_attiva }}">
-            {% if corsa_attiva.step == 1 %}
-                <label>DESTINAZIONE</label><select name="destinazione" id="select_dest"><option value="Rieti">Rieti</option><option value="L'Aquila">L'Aquila</option></select>
-                <label>KM ALL'ARRIVO</label><input type="number" name="km_destinazione" id="km_input_2">
-                <button type="submit" name="azione" value="arrivo_dest" class="btn btn-next">Registra Arrivo</button>
-            {% else %}
-                <label>KM RIENTRO IN SEDE</label><input type="number" name="km_rientro" id="km_input_3">
-                <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Missione</button>
-            {% endif %}
-            <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:#64748b; width:100%; margin-top:20px;">× Annulla</button>
+            <button type="button" class="voice-btn" id="start-voice">🎤 PARLA PER COMPILARE</button>
+            <div id="voice-status"></div>
         {% endif %}
-    </form></div></div>
 
-    <button id="voiceBtn" type="button">🎙️</button>
+        <form method="post" id="mainForm">
+            {% if not targa_attiva %}
+                <h3>Inizia Viaggio</h3>
+                <label>Furgone</label>
+                <select name="targa" id="targa" required>
+                    <option value="GA087CH">GA087CH (Piccolo)</option>
+                    <option value="GX942TS">GX942TS (Medio)</option>
+                    <option value="GG862HC">GG862HC (Grosso)</option>
+                </select>
+                <label>Autista</label>
+                <select name="autista" id="autista">
+                    <option value="Valerio">Valerio</option>
+                    <option value="Daniele">Daniele</option>
+                    <option value="Costantino">Costantino</option>
+                    <option value="Simone">Simone</option>
+                    <option value="Stefano">Stefano</option>
+                </select>
+                <label>Partenza</label>
+                <select name="partenza" id="partenza">
+                    <option value="Tiburtina">Tiburtina</option>
+                    <option value="Rieti">Rieti</option>
+                    <option value="Cavour Viminale">Cavour Viminale</option>
+                    <option value="Via Genova">Via Genova</option>
+                    <option value="Policlinico">Policlinico</option>
+                    <option value="San Giovanni">San Giovanni</option>
+                </select>
+                <button type="button" class="gps-btn" onclick="rilevaPosizione('partenza')">📍 Usa posizione attuale</button>
+                <input type="number" name="km_partenza" id="km_partenza" placeholder="KM Iniziali" required>
+                <button type="submit" name="azione" value="start">INIZIA VIAGGIO</button>
+            {% else %}
+                <div class="info-box">
+                    <strong>{{ targa_attiva }}</strong> guidato da <strong>{{ corsa_attiva.autista }}</strong>
+                </div>
+                <input type="hidden" name="targa" value="{{ targa_attiva }}">
+
+                {% if corsa_attiva.step == 1 %}
+                    <h3>Fase 2: Arrivo a Destinazione</h3>
+                    <label>Dove sei arrivato?</label>
+                    <select name="destinazione" id="destinazione">
+                        <option value="Rieti">Rieti</option>
+                        <option value="L'Aquila">L'Aquila</option>
+                        <option value="Tiburtina">Tiburtina</option>
+                    </select>
+                    <button type="button" class="gps-btn" onclick="rilevaPosizione('destinazione')">📍 Rileva dove sono</button>
+                    <input type="number" name="km_destinazione" placeholder="KM Arrivo" required>
+                    <button type="submit" name="azione" value="arrivo_dest">REGISTRA ARRIVO</button>
+                {% elif corsa_attiva.step == 2 %}
+                    <h3>Fase 3: Rientro alla Base</h3>
+                    <p>Stai rientrando a Tiburtina.</p>
+                    <input type="number" name="km_rientro" placeholder="KM Finali al rientro" required>
+                    <button type="submit" name="azione" value="stop" class="btn-stop">CHIUDI E SCARICA PDF</button>
+                {% endif %}
+                
+                <button type="submit" name="azione" value="annulla" style="background:#666; margin-top:30px; font-size: 0.8rem;">Annulla Viaggio</button>
+            {% endif %}
+        </form>
+    </div>
 
     <script>
-        const vBtn = document.getElementById('voiceBtn');
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // --- LOGICA VOCALE IA ---
+    const btnVoice = document.getElementById('start-voice');
+    const statusVoice = document.getElementById('voice-status');
 
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'it-IT';
+    if (btnVoice && 'webkitSpeechRecognition' in window) {
+        const recognition = new webkitSpeechRecognition();
+        recognition.lang = "it-IT";
 
-            vBtn.onclick = () => {
-                recognition.start();
-                vBtn.style.background = 'red';
-                vBtn.innerText = "🛑";
-            };
+        btnVoice.onclick = () => {
+            recognition.start();
+            statusVoice.innerText = "Ti ascolto... parla ora";
+        };
 
-            recognition.onresult = (e) => {
-                const transcript = e.results[0][0].transcript;
-                vBtn.style.background = '#38bdf8';
-                vBtn.innerText = "🎙️";
-                
-                fetch('/chat_ia', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({messaggio: transcript})
-                })
-                .then(r => r.json()).then(data => {
-                    // Compilazione Automatica
-                    if(data.autista) {
-                        let sel = document.getElementById('select_autista');
-                        if(sel) Array.from(sel.options).forEach(o => { if(o.text.includes(data.autista)) o.selected = true; });
-                    }
-                    if(data.partenza) {
-                        let sel = document.getElementById('select_partenza');
-                        if(sel) sel.add(new Option(data.partenza, data.partenza, true, true));
-                    }
-                    if(data.km) {
-                        let field = document.getElementById('km_input') || document.getElementById('km_input_2') || document.getElementById('km_input_3');
-                        if(field) field.value = data.km.replace(/\D/g,'');
-                    }
-                    if(data.destinazione) {
-                        let sel = document.getElementById('select_dest');
-                        if(sel) sel.add(new Option(data.destinazione, data.destinazione, true, true));
-                    }
-                    // Feedback Vocale
-                    const ut = new SpeechSynthesisUtterance(data.risposta || "Ho inserito i dati");
-                    ut.lang = 'it-IT';
-                    window.speechSynthesis.speak(ut);
-                });
-            };
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            statusVoice.innerText = "Hai detto: " + transcript + ". Elaboro...";
 
-            recognition.onerror = () => { vBtn.style.background = '#38bdf8'; vBtn.innerText = "🎙️"; };
-            recognition.onend = () => { vBtn.style.background = '#38bdf8'; vBtn.innerText = "🎙️"; };
+            fetch('/process_voice', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: transcript})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.targa) document.getElementById('targa').value = data.targa;
+                if(data.autista) document.getElementById('autista').value = data.autista;
+                if(data.km) document.getElementById('km_partenza').value = data.km;
+                if(data.partenza) {
+                    let opt = new Option(data.partenza, data.partenza, true, true);
+                    document.getElementById('partenza').add(opt);
+                }
+                statusVoice.innerText = "Dati compilati! Controlla e premi Inizia.";
+            })
+            .catch(err => {
+                statusVoice.innerText = "Errore durante l'elaborazione.";
+                console.error(err);
+            });
+        };
+    }
 
-        } else {
-            vBtn.onclick = () => alert("Microfono non supportato su questo browser. Usa Chrome.");
+    function rilevaPosizione(idCampo) {
+        const campo = document.getElementById(idCampo);
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const nome = data.address.city || data.address.town || "Posizione Rilevata";
+                        const via = data.address.road || "";
+                        const finale = via ? via + ", " + nome : nome;
+                        const opt = new Option(finale, finale, true, true);
+                        campo.add(opt);
+                    });
+            });
         }
+    }
     </script>
 </body>
 </html>
