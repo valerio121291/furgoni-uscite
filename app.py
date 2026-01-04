@@ -15,7 +15,7 @@ from email import encoders
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
-# CONFIGURAZIONI DALLE VARIABILI DI RENDER
+# CONFIGURAZIONI DA RENDER
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
 GMAIL_USER = os.getenv("GMAIL_USER")
@@ -26,10 +26,10 @@ def invia_email_con_pdf(dati, pdf_buffer):
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
-        msg['To'] = GMAIL_USER  # Lo invii a te stesso
+        msg['To'] = GMAIL_USER 
         msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
 
-        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata da {dati['autista']} il {dati['data_a']}."
+        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa di {dati['autista']} terminata il {dati['data_a']}."
         msg.attach(MIMEText(corpo, 'plain'))
 
         nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%H%M')}.pdf"
@@ -39,7 +39,7 @@ def invia_email_con_pdf(dati, pdf_buffer):
         part.add_header('Content-Disposition', f"attachment; filename= {nome_file}")
         msg.attach(part)
 
-        # Connessione sicura al server Gmail
+        # Connessione SMTP sicura
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_PASS)
@@ -47,7 +47,7 @@ def invia_email_con_pdf(dati, pdf_buffer):
         server.quit()
         print(f"✅ Email inviata con successo a {GMAIL_USER}")
     except Exception as e:
-        print(f"❌ Errore durante l'invio dell'email: {e}")
+        print(f"❌ Errore Invio Email: {e}")
 
 def genera_pdf_buffer(dati):
     """Crea il PDF in memoria"""
@@ -66,10 +66,10 @@ def genera_pdf_buffer(dati):
         Table([
             ["Autista", dati['autista']],
             ["Targa", dati['targa']],
-            ["Partenza", dati['partenza']],
-            ["Destinazione", dati['destinazione']],
-            ["Data Inizio", dati['data_p']],
-            ["Data Fine", dati['data_a']],
+            ["Da", dati['partenza']],
+            ["A", dati['destinazione']],
+            ["Inizio", dati['data_p']],
+            ["Fine", dati['data_a']],
             ["KM Inizio", dati['km_p']],
             ["KM Fine", dati['km_a']],
             ["KM TOTALI", str(tot_km)]
@@ -80,6 +80,7 @@ def genera_pdf_buffer(dati):
         ])),
     ]
     doc.build(elementi)
+    buffer.seek(0)
     return buffer
 
 @app.route("/", methods=["GET", "POST"])
@@ -104,7 +105,7 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
-            # 1. Scrittura su Excel (Robot Google)
+            # 1. Scrittura su Excel
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
@@ -121,7 +122,7 @@ def index():
             except Exception as e:
                 print(f"❌ Errore Excel: {e}")
 
-            # 2. Generazione PDF e Invio Email
+            # 2. Generazione PDF e Invio via Email
             pdf_buffer = genera_pdf_buffer(c)
             invia_email_con_pdf(c, pdf_buffer)
                 
@@ -130,4 +131,5 @@ def index():
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
