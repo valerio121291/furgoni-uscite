@@ -1,115 +1,97 @@
-import os, json, io
-from flask import Flask, render_template, request, session, send_file, redirect
-from datetime import datetime, timedelta
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
+from flask import Flask, render_template, request, redirect, session, send_file
+from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.secret_key = "valerio_centrale_2026_full"
+app.secret_key = "segreto_valerio_furgoni_2024" # Necessario per la memoria della sessione
 
-# DATABASE LOCALE PER DASHBOARD
-DB_FILE = "stato_furgoni.json"
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
-
-def carica_stato():
-    if not os.path.exists(DB_FILE):
-        return {
-            "GA087CH": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""},
-            "GX942TS": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""},
-            "GG862HC": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""}
-        }
-    with open(DB_FILE, "r") as f: return json.load(f)
-
-def salva_stato(stato):
-    with open(DB_FILE, "w") as f: json.dump(stato, f)
+# Database temporaneo per lo stato dei furgoni (in produzione si userebbe un DB reale)
+stato_furgoni = {
+    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 100000},
+    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 120000},
+    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 150000},
+}
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    stato_globale = carica_stato()
-    
+    # 1. Recupera se c'è una corsa attiva nella sessione dell'utente
+    corsa_attiva = None
+    targa_in_uso = None
+    for key in session:
+        if key.startswith("corsa_"):
+            targa_in_uso = key.split("_")[1]
+            corsa_attiva = session[key]
+            break
+
     if request.method == "POST":
         azione = request.form.get("azione")
         targa = request.form.get("targa")
-        
-        # 1. INIZIO VIAGGIO
+
+        # --- AZIONE: ANNULLA (Reset manuale) ---
+        if azione == "annulla":
+            session.pop(f"corsa_{targa}", None)
+            if targa in stato_furgoni:
+                stato_furgoni[targa]["stato"] = "Libero"
+            return redirect("/")
+
+        # --- AZIONE: INIZIO GIRO (Step 1) ---
         if azione == "start":
             autista = request.form.get("autista")
             partenza = request.form.get("partenza")
-            km_p = int(request.form.get("km_partenza"))
-            data_p = datetime.now().strftime("%d/%m/%Y %H:%M")
+            km_p = request.form.get("km_partenza")
             
-            stato_globale[targa] = {
-                "stato": "In Viaggio", "posizione": partenza, "km": km_p, 
-                "autista": autista, "data_p": data_p, "alert": ""
+            # Salviamo i dati nella sessione (L'app ora "sa" che furgone usi)
+            session[f"corsa_{targa}"] = {
+                "targa": targa,
+                "autista": autista,
+                "punto_partenza": partenza,
+                "km_partenza": km_p,
+                "ora_partenza": datetime.now().strftime("%H:%M"),
+                "step": 1 # Siamo in viaggio verso la destinazione
             }
-            salva_stato(stato_globale)
-            session[f"corsa_{targa}"] = stato_globale[targa]
-            session[f"corsa_{targa}"]["targa"] = targa
+            stato_furgoni[targa]["stato"] = "In Viaggio"
+            stato_furgoni[targa]["posizione"] = f"Da {partenza}"
             return redirect("/")
 
-        # 2. ARRIVO A DESTINAZIONE (META' CORSA)
-        elif azione == "arrivo_dest" and f"corsa_{targa}" in session:
-            dest = request.form.get("destinazione")
-            km_d = int(request.form.get("km_destinazione"))
-            data_d = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # --- AZIONE: ARRIVO A DESTINAZIONE (Step 2) ---
+        elif azione == "arrivo_dest":
+            destinazione = request.form.get("destinazione")
+            km_d = request.form.get("km_destinazione")
             
-            stato_globale[targa].update({"posizione": dest, "km": km_d})
-            salva_stato(stato_globale)
-            
-            session[f"corsa_{targa}"].update({"dest": dest, "km_d": km_d, "data_d": data_d, "step": 2})
-            session.modified = True
+            if f"corsa_{targa}" in session:
+                session[f"corsa_{targa}"]["destinazione"] = destinazione
+                session[f"corsa_{targa}"]["km_destinazione"] = km_d
+                session[f"corsa_{targa}"]["ora_destinazione"] = datetime.now().strftime("%H:%M")
+                session[f"corsa_{targa}"]["step"] = 2 # Arrivato, ora deve solo rientrare
+                
+                stato_furgoni[targa]["posizione"] = destinazione
+                stato_furgoni[targa]["km"] = km_d
+                session.modified = True
             return redirect("/")
 
-        # 3. FINE E PDF
-        elif azione == "stop" and f"corsa_{targa}" in session:
-            c = session.pop(f"corsa_{targa}")
-            km_r = int(request.form.get("km_rientro"))
-            data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # --- AZIONE: RIENTRO E CHIUSURA (Step 3) ---
+        elif azione == "stop":
+            km_r = request.form.get("km_rientro")
             
-            # Manutenzione ogni 20.000 km
-            alert = "⚠️ TAGLIANDO!" if km_r % 20000 > 19500 else ""
-            stato_globale[targa] = {"stato": "Libero", "posizione": "Tiburtina", "km": km_r, "autista": "-", "alert": alert}
-            salva_stato(stato_globale)
+            if f"corsa_{targa}" in session:
+                dati_finali = session[f"corsa_{targa}"]
+                # Qui potresti generare il PDF con i dati completi
+                print(f"GIRO CONCLUSO: {dati_finali['autista']} su {targa}")
+                print(f"KM Totali: {int(km_r) - int(dati_finali['km_partenza'])}")
+                
+                # Reset stato e sessione
+                stato_furgoni[targa]["stato"] = "Libero"
+                stato_furgoni[targa]["posizione"] = "Sede"
+                stato_furgoni[targa]["km"] = km_r
+                session.pop(f"corsa_{targa}")
+                
+                # Messaggio di conferma (opzionale)
+                return "<h1>Giro Concluso! PDF Generato (Simulazione).</h1><a href='/'>Torna alla Home</a>"
 
-            # SALVA SU EXCEL
-            try:
-                if CREDS_JSON and SPREADSHEET_ID:
-                    info = json.loads(CREDS_JSON)
-                    creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
-                    service = build('sheets', 'v4', credentials=creds)
-                    values = [[c['data_p'], c.get('data_d','-'), data_r, c['autista'], targa, c['posizione'], c.get('dest','-'), c['km'], c.get('km_d',0), km_r]]
-                    service.spreadsheets().values().append(
-                        spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:J",
-                        valueInputOption="RAW", body={'values': values}
-                    ).execute()
-            except: pass
-
-            # GENERAZIONE PDF
-            buffer = io.BytesIO()
-            p = canvas.Canvas(buffer, pagesize=A4)
-            p.setFont("Helvetica-Bold", 16)
-            p.drawCentredString(300, 800, "RAPPORTO VIAGGIO COMPLETO")
-            
-            y = 750
-            def draw_s(tit, loc, dt, km, y_p, col):
-                p.setFillColor(col); p.rect(50, y_p-50, 500, 50, fill=1)
-                p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 10)
-                p.drawString(60, y_p-15, tit)
-                p.setFont("Helvetica", 9); p.drawString(60, y_p-30, f"LUOGO: {loc} | ORE: {dt} | KM: {km}")
-                return y_p - 65
-
-            y = draw_s("1. PARTENZA", c['posizione'], c['data_p'], c['km'], y, colors.lightgrey)
-            y = draw_s("2. DESTINAZIONE", c.get('dest','-'), c.get('data_d','-'), c.get('km_d',0), y, colors.whitesmoke)
-            y = draw_s("3. RIENTRO", "Tiburtina", data_r, km_r, y, colors.lightgrey)
-            
-            p.showPage(); p.save(); buffer.seek(0)
-            return send_file(buffer, as_attachment=True, download_name=f"Report_{targa}.pdf", mimetype='application/pdf')
-
-    return render_template("form.html", furgoni=stato_globale)
+    return render_template("form.html", furgoni=stato_furgoni, corsa_attiva=corsa_attiva)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # Crea la cartella templates se non esiste
+    if not os.path.exists("templates"):
+        os.makedirs("templates")
+    app.run(debug=True, port=5000)
