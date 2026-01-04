@@ -3,48 +3,108 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Centrale Furgoni</title>
+  <title>Centrale Operativa Furgoni</title>
   <style>
-    body { font-family: sans-serif; background: #f0f2f5; padding: 10px; }
-    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
-    .truck-card { background: white; padding: 10px; border-radius: 10px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .truck-card.In.Viaggio { border-left: 5px solid #f97316; }
-    .truck-card.Libero { border-left: 5px solid #059669; }
-    .tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; color: white; }
-    .tag.green { background: #059669; }
-    .tag.orange { background: #f97316; }
-    .alert { color: red; font-weight: bold; font-size: 0.7rem; }
-    .form-container { background: white; padding: 20px; border-radius: 15px; }
-    input, select, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; }
-    button { background: #2563eb; color: white; font-weight: bold; border: none; }
+    body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 15px; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 25px; }
+    .truck-card { background: white; padding: 12px; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 5px solid #ccc; }
+    .truck-card.In.Viaggio { border-top-color: #f97316; }
+    .truck-card.Libero { border-top-color: #059669; }
+    .targa-box { font-weight: bold; font-size: 1.1rem; display: block; }
+    .status-tag { font-size: 0.7rem; font-weight: bold; text-transform: uppercase; padding: 3px 8px; border-radius: 50px; color: white; margin: 5px 0; display: inline-block; }
+    .Libero .status-tag { background: #059669; }
+    .In.Viaggio .status-tag { background: #f97316; }
+    .km-label { font-size: 0.85rem; color: #555; display: block; }
+    .alert-msg { color: #dc2626; font-size: 0.75rem; font-weight: bold; margin-top: 5px; }
+    
+    .main-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    h3 { margin-top: 0; color: #1e293b; font-size: 1.1rem; }
+    select, input, button { width: 100%; padding: 12px; margin-top: 12px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 1rem; }
+    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    .btn-step { background: #f97316; }
+    .btn-stop { background: #059669; }
   </style>
 </head>
 <body>
 
+  <div class="header">
+    <h2>🚚 Gestione Flotta</h2>
+  </div>
+
   <div class="status-grid">
     {% for targa, info in furgoni.items() %}
     <div class="truck-card {{ info.stato }}">
-      <div style="font-weight: bold;">{{ targa }}</div>
-      <div class="tag {{ 'green' if info.stato == 'Libero' else 'orange' }}">{{ info.stato }}</div>
-      <div style="font-size: 0.8rem; margin-top: 5px;">📍 {{ info.posizione }}</div>
-      <div style="font-size: 0.8rem; color: #666;">{{ info.km }} KM</div>
-      {% if info.alert %}<div class="alert">{{ info.alert }}</div>{% endif %}
-      <div style="font-size: 0.7rem; font-style: italic;">{{ info.autista }}</div>
+      <span class="targa-box">{{ targa }}</span>
+      <span class="status-tag">{{ info.stato }}</span>
+      <span class="km-label">📍 {{ info.posizione }}</span>
+      <span class="km-label">🏁 {{ info.km }} KM</span>
+      {% if info.alert %}<div class="alert-msg">{{ info.alert }}</div>{% endif %}
     </div>
     {% endfor %}
   </div>
 
-  <div class="form-container">
-    <h3>Registra Attività</h3>
+  <div class="main-card">
     <form method="post">
-      <select name="targa" required>
-         <option value="GA087CH">GA087CH</option>
-         <option value="GX942TS">GX942TS</option>
-         <option value="GG862HC">GG862HC</option>
+      <h3>Registra Attività</h3>
+      
+      <label>Seleziona Furgone</label>
+      <select name="targa" id="targa-select" required onchange="toggleForm()">
+        <option value="" disabled selected>Scegli...</option>
+        {% for targa, info in furgoni.items() %}
+          <option value="{{ targa }}" data-stato="{{ info.stato }}">{{ targa }}</option>
+        {% endfor %}
       </select>
-      <button type="submit" name="azione" value="start">Inizia</button>
+
+      <div id="form-start" style="display:none;">
+        <select name="autista">
+          <option value="Valerio">Valerio</option>
+          <option value="Costantino">Costantino</option>
+          <option value="Simone">Simone</option>
+          <option value="Stefano">Stefano</option>
+          <option value="Daniele">Daniele</option>
+        </select>
+        <select name="partenza">
+            <option value="Tiburtina">Tiburtina</option>
+            <option value="Rieti">Rieti</option>
+            <option value="L'Aquila">L'Aquila</option>
+            </select>
+        <input type="number" name="km_partenza" placeholder="KM Partenza">
+        <button type="submit" name="azione" value="start">INIZIA GIRO</button>
+      </div>
+
+      <div id="form-arrivo" style="display:none;">
+        <select name="destinazione">
+            <option value="Rieti">Rieti</option>
+            <option value="L'Aquila">L'Aquila</option>
+            </select>
+        <input type="number" name="km_destinazione" placeholder="KM Arrivo Destinazione">
+        <button type="submit" name="azione" value="arrivo_dest" class="btn-step">REGISTRA ARRIVO</button>
+      </div>
+
+      <div id="form-stop" style="display:none;">
+        <input type="number" name="km_rientro" placeholder="KM Rientro Base">
+        <button type="submit" name="azione" value="stop" class="btn-stop">CHIUDI E SCARICA PDF</button>
+      </div>
     </form>
   </div>
 
+  <script>
+    function toggleForm() {
+      const select = document.getElementById('targa-select');
+      const stato = select.options[select.selectedIndex].getAttribute('data-stato');
+      
+      document.getElementById('form-start').style.display = (stato === 'Libero') ? 'block' : 'none';
+      // Qui aggiungeremo la logica per mostrare arrivo o stop in base allo step salvato in sessione
+      // Per ora mostriamo i blocchi in base allo stato del furgone
+      if(stato === 'In Viaggio') {
+          document.getElementById('form-arrivo').style.display = 'block';
+          document.getElementById('form-stop').style.display = 'block';
+      } else {
+          document.getElementById('form-arrivo').style.display = 'none';
+          document.getElementById('form-stop').style.display = 'none';
+      }
+    }
+  </script>
 </body>
 </html>
