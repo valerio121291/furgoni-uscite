@@ -4,7 +4,7 @@ from datetime import datetime
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -33,7 +33,6 @@ def index():
                 "km_p": request.form.get("km_partenza"),
                 "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
-            print(f"--- [START] Corsa di {session['corsa']['autista']} ---")
             
         elif azione == "stop" and "corsa" in session:
             c = session.pop("corsa")
@@ -43,24 +42,33 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
 
-            # --- 1. GENERAZIONE PDF ---
-            print("--- [1] Creazione PDF ---")
+            # 1. SCRITTURA EXCEL (Immediata)
+            try:
+                info = json.loads(CREDS_JSON)
+                creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+                service = build('sheets', 'v4', credentials=creds)
+                values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
+                service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
+                print("✅ Excel OK")
+            except Exception as e:
+                print(f"❌ Errore Excel: {e}")
+
+            # 2. GENERAZIONE PDF
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
             styles = getSampleStyleSheet()
-            testo = [Paragraph(f"Rapporto {c['autista']} - {c['targa']}", styles['Heading1']),
-                     Paragraph(f"Dalle {c['data_p']} alle {c['data_a']}", styles['Normal'])]
-            doc.build(testo)
+            doc.build([Paragraph(f"Rapporto {c['autista']}", styles['Heading1']), Spacer(1,12), Paragraph(f"Targa: {c['targa']}", styles['Normal'])])
             pdf_content = buffer.getvalue()
 
-            # --- 2. INVIO EMAIL (DIRETTO, SENZA THREAD) ---
-            print(f"--- [2] Invio Email a {GMAIL_USER} ---")
+            # 3. INVIO EMAIL (Bloccante - Obbliga Render ad aspettare l'invio)
+            print(f"--- [INVIO IN CORSO...] ---")
             try:
                 msg = MIMEMultipart()
                 msg['From'] = GMAIL_USER
                 msg['To'] = GMAIL_USER
-                msg['Subject'] = f"PDF Furgoni: {c['autista']}"
-                msg.attach(MIMEText("Rapporto allegato.", 'plain'))
+                msg['Subject'] = f"Rapporto {c['autista']}"
+                msg.attach(MIMEText("In allegato il PDF.", 'plain'))
+                
                 part = MIMEBase('application', 'octet-stream')
                 part.set_payload(pdf_content)
                 encoders.encode_base64(part)
@@ -71,22 +79,10 @@ def index():
                     server.starttls()
                     server.login(GMAIL_USER, GMAIL_PASS)
                     server.send_message(msg)
-                print("✅ EMAIL INVIATA!")
+                print("✅ ✅ ✅ EMAIL INVIATA!")
             except Exception as e:
-                print(f"❌ ERRORE EMAIL: {str(e)}")
-
-            # --- 3. EXCEL ---
-            print("--- [3] Aggiornamento Excel ---")
-            try:
-                info = json.loads(CREDS_JSON)
-                creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
-                service = build('sheets', 'v4', credentials=creds)
-                values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
-                service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
-                print("✅ EXCEL OK!")
-            except Exception as e:
-                print(f"❌ ERRORE EXCEL: {str(e)}")
-
+                print(f"❌ ERRORE EMAIL: {e}")
+                
         return redirect("/")
     
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
