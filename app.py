@@ -1,12 +1,10 @@
-
-import os, json, io, smtplib, threading
+import os, json, io, smtplib
 from flask import Flask, render_template, request, redirect, session
 from datetime import datetime
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -14,85 +12,83 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
+app.secret_key = "chiave_segreta_valerio"
 
-# Caricamento variabili da Render
+# Variabili Ambiente
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_PASS = os.getenv("GMAIL_PASS")
 
-def invia_email_gmx(dati, pdf_content):
-    print(f"--- [GMX] Tentativo invio a {GMAIL_USER} ---")
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
-        msg['To'] = GMAIL_USER 
-        msg['Subject'] = f"Rapporto Corsa: {dati['autista']}"
-        msg.attach(MIMEText("In allegato il rapporto PDF della corsa.", 'plain'))
-
-        part = MIMEBase('application', 'octet-stream')
-        part.set_payload(pdf_content)
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition', f"attachment; filename=Rapporto.pdf")
-        msg.attach(part)
-
-        # Server GMX porta 587
-        with smtplib.SMTP("mail.gmx.com", 587, timeout=30) as server:
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_PASS)
-            server.send_message(msg)
-        print("✅ ✅ ✅ EMAIL GMX INVIATA CON SUCCESSO!")
-    except Exception as e:
-        print(f"❌ [GMX] ERRORE: {e}")
-
-def genera_pdf_buffer(dati):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    elementi = [
-        Paragraph(f"RIEPILOGO CORSA - {dati['autista']}", styles['Heading1']),
-        Spacer(1, 12),
-        Paragraph(f"Targa: {dati['targa']}", styles['Normal']),
-        Paragraph(f"Partenza: {dati['data_p']} ({dati['km_p']} KM)", styles['Normal']),
-        Paragraph(f"Arrivo: {dati['data_a']} ({dati['km_a']} KM)", styles['Normal'])
-    ]
-    doc.build(elementi)
-    return buffer.getvalue()
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
+        
         if azione == "start":
             session["corsa"] = {
-                "autista": request.form.get("autista"), "targa": request.form.get("targa"),
-                "partenza": request.form.get("partenza"), "km_p": request.form.get("km_partenza"),
+                "autista": request.form.get("autista"),
+                "targa": request.form.get("targa"),
+                "partenza": request.form.get("partenza"),
+                "km_p": request.form.get("km_partenza"),
                 "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
+            print(f"--- [START] Corsa di {session['corsa']['autista']} ---")
+            
         elif azione == "stop" and "corsa" in session:
             c = session.pop("corsa")
             c.update({
-                "destinazione": request.form.get("destinazione"), "km_a": request.form.get("km_arrivo"),
+                "destinazione": request.form.get("destinazione"),
+                "km_a": request.form.get("km_arrivo"),
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
-            
-            # 1. Excel
+
+            # --- 1. GENERAZIONE PDF ---
+            print("--- [1] Creazione PDF ---")
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            styles = getSampleStyleSheet()
+            testo = [Paragraph(f"Rapporto {c['autista']} - {c['targa']}", styles['Heading1']),
+                     Paragraph(f"Dalle {c['data_p']} alle {c['data_a']}", styles['Normal'])]
+            doc.build(testo)
+            pdf_content = buffer.getvalue()
+
+            # --- 2. INVIO EMAIL (DIRETTO, SENZA THREAD) ---
+            print(f"--- [2] Invio Email a {GMAIL_USER} ---")
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = GMAIL_USER
+                msg['To'] = GMAIL_USER
+                msg['Subject'] = f"PDF Furgoni: {c['autista']}"
+                msg.attach(MIMEText("Rapporto allegato.", 'plain'))
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(pdf_content)
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', 'attachment; filename=Rapporto.pdf')
+                msg.attach(part)
+
+                with smtplib.SMTP("mail.gmx.com", 587, timeout=20) as server:
+                    server.starttls()
+                    server.login(GMAIL_USER, GMAIL_PASS)
+                    server.send_message(msg)
+                print("✅ EMAIL INVIATA!")
+            except Exception as e:
+                print(f"❌ ERRORE EMAIL: {str(e)}")
+
+            # --- 3. EXCEL ---
+            print("--- [3] Aggiornamento Excel ---")
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
                 service = build('sheets', 'v4', credentials=creds)
                 values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
                 service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
-                print("✅ Excel aggiornato")
+                print("✅ EXCEL OK!")
             except Exception as e:
-                print(f"❌ Errore Excel: {e}")
+                print(f"❌ ERRORE EXCEL: {str(e)}")
 
-            # 2. PDF ed Email in Background
-            pdf_content = genera_pdf_buffer(c)
-            threading.Thread(target=invia_email_gmx, args=(c, pdf_content)).start()
-                
         return redirect("/")
+    
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
