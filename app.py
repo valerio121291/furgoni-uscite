@@ -1,33 +1,56 @@
-
-import os, json, io
+import os, json, io, smtplib
 from flask import Flask, render_template, request, redirect, session
 from datetime import datetime
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
-# CONFIGURAZIONI RENDER
+# CONFIGURAZIONI DALLE VARIABILI DI RENDER
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_PASS = os.getenv("GMAIL_PASS")
 
-def get_google_services():
-    info = json.loads(CREDS_JSON)
-    creds = Credentials.from_service_account_info(info, scopes=[
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive.file'
-    ])
-    return build('sheets', 'v4', credentials=creds), build('drive', 'v3', credentials=creds)
+def invia_email_con_pdf(dati, pdf_buffer):
+    """Invia il rapporto PDF via email usando Gmail"""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        msg['To'] = GMAIL_USER  # Lo invii a te stesso
+        msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
 
-def salva_pdf_su_drive(dati, drive_service):
-    """Versione con bypass forzato della quota storage"""
+        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa terminata da {dati['autista']} il {dati['data_a']}."
+        msg.attach(MIMEText(corpo, 'plain'))
+
+        nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%H%M')}.pdf"
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(pdf_buffer.getvalue())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f"attachment; filename= {nome_file}")
+        msg.attach(part)
+
+        # Connessione sicura al server Gmail
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+        print(f"✅ Email inviata con successo a {GMAIL_USER}")
+    except Exception as e:
+        print(f"❌ Errore durante l'invio dell'email: {e}")
+
+def genera_pdf_buffer(dati):
+    """Crea il PDF in memoria"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
@@ -38,14 +61,18 @@ def salva_pdf_su_drive(dati, drive_service):
         tot_km = "N/D"
 
     elementi = [
-        Paragraph(f"RAPPORTO CORSA - {dati['autista']}", styles['Heading1']),
+        Paragraph(f"RIEPILOGO CORSA - {dati['autista']}", styles['Heading1']),
         Spacer(1, 12),
         Table([
-            ["Data Inizio", dati['data_p']], ["Data Fine", dati['data_a']],
-            ["Autista", dati['autista']], ["Targa", dati['targa']],
-            ["Da", dati['partenza']], ["A", dati['destinazione']],
-            ["KM Partenza", dati['km_p']], ["KM Arrivo", dati['km_a']],
-            ["TOTALE KM", str(tot_km)]
+            ["Autista", dati['autista']],
+            ["Targa", dati['targa']],
+            ["Partenza", dati['partenza']],
+            ["Destinazione", dati['destinazione']],
+            ["Data Inizio", dati['data_p']],
+            ["Data Fine", dati['data_a']],
+            ["KM Inizio", dati['km_p']],
+            ["KM Fine", dati['km_a']],
+            ["KM TOTALI", str(tot_km)]
         ], style=TableStyle([
             ('GRID', (0,0), (-1,-1), 1, colors.black),
             ('BACKGROUND', (0,0), (0,-1), colors.lightgrey),
@@ -53,29 +80,13 @@ def salva_pdf_su_drive(dati, drive_service):
         ])),
     ]
     doc.build(elementi)
-    buffer.seek(0)
-    
-    nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf"
-    media = MediaIoBaseUpload(buffer, mimetype='application/pdf', resumable=True)
-    
-    file_metadata = {
-        'name': nome_file,
-        'parents': [FOLDER_ID]
-    }
-    
-    # ESECUZIONE CON TUTTI I PARAMETRI DI COMPATIBILITÀ POSSIBILI
-    drive_service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id',
-        supportsAllDrives=True,
-        supportsTeamDrives=True
-    ).execute()
+    return buffer
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
+        
         if azione == "start":
             session["corsa"] = {
                 "autista": request.form.get("autista"),
@@ -84,6 +95,7 @@ def index():
                 "km_p": request.form.get("km_partenza"),
                 "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
+            
         elif azione == "stop" and "corsa" in session:
             c = session.pop("corsa")
             c.update({
@@ -92,29 +104,29 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
+            # 1. Scrittura su Excel (Robot Google)
             try:
-                sheets_service, drive_service = get_google_services()
-                
-                # 1. Scrittura Excel (Sappiamo che funziona)
-                sheets_service.spreadsheets().values().append(
+                info = json.loads(CREDS_JSON)
+                creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+                service = build('sheets', 'v4', credentials=creds)
+                values = [[
+                    c['data_p'], c['data_a'], c['autista'], c['targa'],
+                    c['partenza'], c['destinazione'], c['km_p'], c['km_a']
+                ]]
+                service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H",
-                    valueInputOption="RAW", body={'values': [[
-                        c['data_p'], c['data_a'], c['autista'], c['targa'],
-                        c['partenza'], c['destinazione'], c['km_p'], c['km_a']
-                    ]]}
+                    valueInputOption="RAW", body={'values': values}
                 ).execute()
-                
-                # 2. PDF (Messo dentro un altro try per non bloccare tutto se fallisce)
-                try:
-                    salva_pdf_su_drive(c, drive_service)
-                    print("✅ PDF Salvato")
-                except Exception as e_pdf:
-                    print(f"⚠️ Errore solo PDF: {e_pdf}")
-                    
+                print("✅ Excel aggiornato")
             except Exception as e:
-                print(f"❌ Errore generale: {e}")
+                print(f"❌ Errore Excel: {e}")
+
+            # 2. Generazione PDF e Invio Email
+            pdf_buffer = genera_pdf_buffer(c)
+            invia_email_con_pdf(c, pdf_buffer)
                 
         return redirect("/")
+    
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
