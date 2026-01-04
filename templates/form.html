@@ -3,46 +3,42 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Centrale Furgoni Valerio</title>
+    <title>Centrale Operativa Valerio</title>
     <style>
         body { font-family: sans-serif; background: #f0f2f5; padding: 15px; margin: 0; }
         .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
-        .truck-card { background: white; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-top: 4px solid #ccc; }
-        .truck-card.In.Viaggio { border-top-color: #f97316; }
-        .truck-card.Libero { border-top-color: #059669; }
+        .truck-card { background: white; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.75rem; border-top: 4px solid #ccc; }
+        .In.Viaggio { border-top-color: #f97316; }
+        .Libero { border-top-color: #059669; }
         .main-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         select, input, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 1rem; }
-        button { background: #2563eb; color: white; font-weight: bold; border: none; cursor: pointer; }
-        .btn-step { background: #f97316; }
+        button { background: #2563eb; color: white; font-weight: bold; border: none; }
         .btn-stop { background: #059669; }
-        .info-box { background: #fff7ed; border: 1px solid #fdba74; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; }
+        .info-box { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; border-left: 4px solid #2563eb; }
     </style>
 </head>
 <body>
 
     <div class="status-grid">
-        {% for targa, info in furgoni.items() %}
+        {% for t, info in furgoni.items() %}
         <div class="truck-card {{ info.stato }}">
-            <strong>{{ targa }}</strong><br>
-            <span style="color: {{ '#f97316' if info.stato == 'In Viaggio' else '#059669' }}">{{ info.stato }}</span><br>
-            📍 {{ info.posizione }}<br>
-            🏁 {{ info.km }} KM
+            <strong>{{ t }}</strong><br>
+            {{ info.stato }}<br>
+            📍 {{ info.posizione }}
         </div>
         {% endfor %}
     </div>
 
     <div class="main-card">
         <form method="post">
-            
-            {% if not corsa_attiva %}
-                <h3>Inizia Nuovo Giro</h3>
-                <label>Seleziona Furgone</label>
+            {% if not targa_attiva %}
+                <h3>Nuovo Viaggio</h3>
+                <label>Furgone</label>
                 <select name="targa" required>
-                    <option value="GA087CH">GA087CH (Piccolo)</option>
-                    <option value="GX942TS">GX942TS (Medio)</option>
-                    <option value="GG862HC">GG862HC (Grosso)</option>
+                    <option value="GA087CH">GA087CH</option>
+                    <option value="GX942TS">GX942TS</option>
+                    <option value="GG862HC">GG862HC</option>
                 </select>
-
                 <label>Autista</label>
                 <select name="autista">
                     <option value="Valerio">Valerio</option>
@@ -51,82 +47,41 @@
                     <option value="Simone">Simone</option>
                     <option value="Stefano">Stefano</option>
                 </select>
-
-                <label>Partenza da</label>
+                <label>Partenza</label>
                 <select name="partenza">
                     <option value="Tiburtina">Tiburtina</option>
                     <option value="Rieti">Rieti</option>
-                    <option value="Cavour Viminale">Cavour Viminale</option>
-                    <option value="Via Genova">Via Genova</option>
-                    <option value="Policlinico">Policlinico</option>
-                    <option value="San Giovanni">San Giovanni</option>
-                    <option value="Fontechiari">Fontechiari</option>
-                    <option value="Nomentano">Nomentano</option>
-                    <option value="Sulmona">Sulmona</option>
-                    <option value="Pratica di Mare">Pratica di Mare</option>
-                    <option value="Spallanzani">Spallanzani</option>
-                    <option value="Avezzano">Avezzano</option>
-                    <option value="Castel di Sangro">Castel di Sangro</option>
-                    <option value="Fondazione Bietti">Fondazione Bietti</option>
-                    <option value="Tor Vergata">Tor Vergata</option>
-                    <option value="Studio legale Abrignani">Studio legale Abrignani</option>
-                    <option value="ACS Eur">ACS Eur</option>
-                    <option value="Teramo">Teramo</option>
+                    <option value="Cavour">Cavour</option>
                     <option value="L'Aquila">L'Aquila</option>
                 </select>
-
-                <label>KM Partenza</label>
-                <input type="number" name="km_partenza" placeholder="Inserisci KM attuali" required>
-                <button type="submit" name="azione" value="start">INIZIA GIRO</button>
-
+                <input type="number" name="km_partenza" placeholder="KM Iniziali" required>
+                <button type="submit" name="azione" value="start">INIZIA</button>
             {% else %}
                 <div class="info-box">
-                    <strong>Furgone:</strong> {{ corsa_attiva.targa }}<br>
-                    <strong>Autista:</strong> {{ corsa_attiva.autista }}<br>
-                    <strong>Stato:</strong> {{ "Arrivato a destinazione" if corsa_attiva.step == 2 else "In viaggio" }}
+                    <strong>{{ targa_attiva }}</strong> guidato da <strong>{{ corsa_attiva.autista }}</strong>
                 </div>
-                
-                <input type="hidden" name="targa" value="{{ corsa_attiva.targa }}">
+                <input type="hidden" name="targa" value="{{ targa_attiva }}">
 
                 {% if corsa_attiva.step == 1 %}
-                    <h3>Registra Arrivo</h3>
-                    <label>Seleziona Destinazione</label>
+                    <h3>Fase 2: Arrivo</h3>
                     <select name="destinazione">
                         <option value="Rieti">Rieti</option>
-                        <option value="Tiburtina">Tiburtina</option>
-                        <option value="Cavour Viminale">Cavour Viminale</option>
-                        <option value="Via Genova">Via Genova</option>
-                        <option value="Policlinico">Policlinico</option>
-                        <option value="San Giovanni">San Giovanni</option>
-                        <option value="Fontechiari">Fontechiari</option>
-                        <option value="Nomentano">Nomentano</option>
-                        <option value="Sulmona">Sulmona</option>
-                        <option value="Pratica di Mare">Pratica di Mare</option>
-                        <option value="Spallanzani">Spallanzani</option>
-                        <option value="Avezzano">Avezzano</option>
-                        <option value="Castel di Sangro">Castel di Sangro</option>
-                        <option value="Fondazione Bietti">Fondazione Bietti</option>
-                        <option value="Tor Vergata">Tor Vergata</option>
-                        <option value="Studio legale Abrignani">Studio legale Abrignani</option>
-                        <option value="ACS Eur">ACS Eur</option>
-                        <option value="Teramo">Teramo</option>
+                        <option value="Cavour">Cavour</option>
                         <option value="L'Aquila">L'Aquila</option>
+                        <option value="Tiburtina">Tiburtina</option>
                     </select>
-                    <label>KM all'Arrivo</label>
-                    <input type="number" name="km_destinazione" placeholder="KM segnati ora" required>
-                    <button type="submit" name="azione" value="arrivo_dest" class="btn-step">REGISTRA ARRIVO</button>
-                {% else %}
-                    <h3>Rientro alla Base</h3>
-                    <label>KM Finali al Rientro</label>
-                    <input type="number" name="km_rientro" placeholder="KM al rientro" required>
-                    <button type="submit" name="azione" value="stop" class="btn-stop">CHIUDI E SCARICA PDF</button>
+                    <input type="number" name="km_destinazione" placeholder="KM Arrivo" required>
+                    <button type="submit" name="azione" value="arrivo_dest">REGISTRA ARRIVO</button>
+                {% elif corsa_attiva.step == 2 %}
+                    <h3>Fase 3: Rientro</h3>
+                    <input type="number" name="km_rientro" placeholder="KM Finali" required>
+                    <button type="submit" name="azione" value="stop" class="btn-stop">CHIUDI E SCARICA</button>
                 {% endif %}
                 
-                <hr style="margin-top:20px;">
-                <button type="submit" name="azione" value="annulla" style="background:#94a3b8; font-size: 0.8rem;">Annulla/Cambia Furgone</button>
+                <button type="submit" name="azione" value="annulla" style="background:#666; margin-top:30px;">Annulla tutto</button>
             {% endif %}
-
         </form>
     </div>
+
 </body>
 </html>
