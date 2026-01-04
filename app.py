@@ -6,8 +6,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
 app = Flask(__name__)
-app.secret_key = "valerio_centrale_blindata_2026"
+app.secret_key = "valerio_centrale_blindata_2026_gps"
 
+# File per la memoria permanente dello stato dei furgoni
 DB_FILE = "stato_furgoni.json"
 
 def carica_stato():
@@ -36,6 +37,7 @@ def index():
         azione = request.form.get("azione")
         targa = request.form.get("targa")
 
+        # --- AZIONE: INIZIO (STEP 1) ---
         if azione == "start":
             furgoni[targa] = {
                 "targa": targa,
@@ -50,6 +52,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
+        # --- AZIONE: ARRIVO DESTINAZIONE (STEP 2) ---
         elif azione == "arrivo_dest":
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -60,24 +63,23 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
+        # --- AZIONE: CHIUSURA E PDF (STEP 3) ---
         elif azione == "stop":
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
             
-            # --- GENERAZIONE PDF REALE ---
+            # Creazione PDF in memoria
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setTitle(f"Report_{targa}")
             
-            # Intestazione
             p.setFont("Helvetica-Bold", 18)
             p.drawCentredString(300, 800, "DIARIO DI BORDO - REPORT VIAGGIO")
             p.setFont("Helvetica", 12)
             p.drawCentredString(300, 780, f"Furgone: {targa} | Autista: {c['autista']}")
             
             y = 720
-            # Funzione per disegnare i blocchi nel PDF
             def draw_block(titolo, info, km, data, y_pos, color_bg):
                 p.setFillColor(color_bg)
                 p.rect(50, y_pos-60, 500, 60, fill=1)
@@ -93,7 +95,6 @@ def index():
             y = draw_block("2. ARRIVO DESTINAZIONE", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
             y = draw_block("3. RIENTRO ALLA BASE", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
             
-            # Calcolo Totale
             tot_km = int(km_r) - int(c['km_p'])
             p.setFont("Helvetica-Bold", 14)
             p.drawString(50, y-40, f"TOTALE CHILOMETRI PERCORSI: {tot_km} KM")
@@ -102,15 +103,16 @@ def index():
             p.save()
             buffer.seek(0)
 
-            # Reset furgone nello stato globale
+            # Reset dello stato furgone
             furgoni[targa] = {
                 "stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0
             }
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
             
-            return send_file(buffer, as_attachment=True, download_name=f"Viaggio_{targa}_{datetime.now().strftime('%d%m')}.pdf", mimetype='application/pdf')
+            return send_file(buffer, as_attachment=True, download_name=f"Viaggio_{targa}.pdf", mimetype='application/pdf')
 
+        # --- AZIONE: ANNULLA ---
         elif azione == "annulla":
             if targa:
                 furgoni[targa]["stato"] = "Libero"
