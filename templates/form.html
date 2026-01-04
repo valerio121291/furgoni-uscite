@@ -33,7 +33,6 @@
             letter-spacing: 2px;
         }
         
-        /* Dashboard Furgoni */
         .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
         .truck-card { 
             background: var(--card-dark); 
@@ -50,7 +49,6 @@
         .truck-card strong { font-size: 0.8rem; display: block; color: var(--text-main); }
         .truck-card span { font-size: 0.6rem; color: #94a3b8; display: block; margin-top: 3px; }
 
-        /* Form e Input */
         .main-container { padding: 0 15px; }
         .card { 
             background: var(--card-dark); 
@@ -67,7 +65,6 @@
             box-sizing: border-box;
         }
         
-        /* Pulsanti Belli Grossi */
         .btn { 
             width: 100%; padding: 20px; margin-top: 25px; border-radius: 15px; 
             border: none; font-size: 1.1rem; font-weight: 800; color: white; 
@@ -81,7 +78,6 @@
             color: var(--accent); border: 1px dashed var(--accent);
         }
 
-        /* Barra di avanzamento */
         .progress-bar { display: flex; justify-content: space-between; margin-bottom: 30px; position: relative; padding: 0 10px; }
         .progress-step { 
             width: 35px; height: 35px; background: #334155; border-radius: 50%; 
@@ -136,11 +132,11 @@
 
                     <label>Punto di Partenza</label>
                     <select name="partenza" id="partenza">
+                        <option value="Sede">Sede</option>
                         <option value="Tiburtina">Tiburtina</option>
                         <option value="Rieti">Rieti</option>
                         <option value="Policlinico">Policlinico</option>
                         <option value="L'Aquila">L'Aquila</option>
-                        <option value="Teramo">Teramo</option>
                     </select>
                     <button type="button" class="btn btn-gps" onclick="rilevaPosizione('partenza')">📍 RILEVA POSIZIONE GPS</button>
 
@@ -165,13 +161,33 @@
                             <div class="progress-step">3</div>
                         </div>
                         <label>Destinazione Raggiunta</label>
-                        <select name="destinazione" id="destinazione">
-                            <option value="Rieti">Rieti</option>
-                            <option value="L'Aquila">L'Aquila</option>
+                        <select name="destinazione" id="destinazione" required>
+                            <option value="" disabled selected>Dove arrivi?</option>
+                            <option value="GIRO LIBERO">🔄 GIRO LIBERO</option>
                             <option value="Tiburtina">Tiburtina</option>
+                            <option value="Rieti">Rieti</option>
+                            <option value="Cavour Viminale">Cavour Viminale</option>
+                            <option value="Via Genova">Via Genova</option>
+                            <option value="Policlinico">Policlinico</option>
+                            <option value="San Giovanni">San Giovanni</option>
+                            <option value="Fontechiari">Fontechiari</option>
+                            <option value="Nomentano">Nomentano</option>
+                            <option value="Sulmona">Sulmona</option>
+                            <option value="Pratica di Mare">Pratica di Mare</option>
+                            <option value="Spallanzani">Spallanzani</option>
                             <option value="Avezzano">Avezzano</option>
+                            <option value="Castel di Sangro">Castel di Sangro</option>
+                            <option value="Fondazione Bietti">Fondazione Bietti</option>
+                            <option value="Tor Vergata">Tor Vergata</option>
+                            <option value="Studio legale Abrignani">Studio legale Abrignani</option>
+                            <option value="ACS Eur">ACS Eur</option>
+                            <option value="Teramo">Teramo</option>
+                            <option value="L'Aquila">L'Aquila</option>
+                            <option value="Sede">Sede (Rientro)</option>
                         </select>
                         <button type="button" class="btn btn-gps" onclick="rilevaPosizione('destinazione')">📍 CONFERMA GPS ARRIVO</button>
+                        
+                        <label>KM all'Arrivo</label>
                         <input type="number" name="km_destinazione" placeholder="KM sul cruscotto ora" required>
                         <button type="submit" name="azione" value="arrivo_dest" class="btn btn-next">Registra Arrivo</button>
 
@@ -184,10 +200,10 @@
                         </div>
                         <label>Chilometri al Rientro</label>
                         <input type="number" name="km_rientro" placeholder="KM Finali (Sede)" required>
-                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi e Invia PDF</button>
+                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi e Salva Excel</button>
                     {% endif %}
                     
-                    <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:#64748b; width:100%; margin-top:30px;">Annulla Viaggio</button>
+                    <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:#64748b; width:100%; margin-top:30px; font-weight:bold; cursor:pointer;">× Annulla Viaggio</button>
                 {% endif %}
             </form>
         </div>
@@ -206,8 +222,10 @@
                         const finale = via ? via + ", " + nome : nome;
                         const opt = new Option(finale, finale, true, true);
                         campo.add(opt);
-                        alert("Posizione aggiornata correttamente!");
+                        alert("Posizione rilevata: " + finale);
                     });
+            }, function() {
+                alert("Errore: abilita il GPS nel browser.");
             });
         }
     }
