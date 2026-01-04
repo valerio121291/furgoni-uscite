@@ -3,14 +3,19 @@ from flask import Flask, render_template, request, session, send_file, redirect,
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "csa_logistica_pplx_2026_fixed"
+app.secret_key = "csa_logistica_2026_pplx_final"
 
-# CHIAVE PERPLEXITY (letta da Render Environment o backup)
+# CHIAVE PERPLEXITY
 PPLX_KEY = os.getenv("PPLX_KEY", "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")
 
 DB_FILE = "stato_furgoni.json"
 
-# --- FUNZIONI DI SERVIZIO (INDISPENSABILI) ---
+# --- 1. DEFINIZIONE FUNZIONI (Devono stare in alto!) ---
+
+def salva_stato(stato):
+    with open(DB_FILE, "w") as f:
+        json.dump(stato, f)
+
 def carica_stato():
     if not os.path.exists(DB_FILE):
         iniziale = {
@@ -26,14 +31,11 @@ def carica_stato():
     except:
         return {}
 
-def salva_stato(stato):
-    with open(DB_FILE, "w") as f:
-        json.dump(stato, f)
-
-# --- ROTTE DELL'APP ---
+# --- 2. ROTTE DELL'APPLICAZIONE ---
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    # Ora carica_stato() è definita sopra, quindi funzionerà!
     furgoni = carica_stato()
     targa_attiva = session.get("targa_in_uso")
     corsa_attiva = furgoni.get(targa_attiva) if targa_attiva else None
@@ -69,7 +71,6 @@ def index():
 
         elif azione == "stop":
             if targa in furgoni:
-                # Riporta il furgone a Libero e aggiorna i KM finali
                 furgoni[targa] = {
                     "stato": "Libero", 
                     "posizione": "Sede", 
@@ -103,11 +104,7 @@ def chat_ia():
             "messages": [
                 {
                     "role": "system",
-                    "content": """Estrai dati logistici. Rispondi SOLO in JSON.
-                    Nomi: Valerio, Daniele, Costantino, Stefano.
-                    Luoghi: Tiburtina, Rieti, Sede, L'Aquila, Roma.
-                    Formato: {"autista": "nome", "partenza": "città", "km": 1000, "destinazione": "città", "risposta": "breve conferma"}.
-                    Se manca un dato metti null."""
+                    "content": "Rispondi SOLO in JSON: {\"autista\": \"nome\", \"partenza\": \"città\", \"km\": 0, \"destinazione\": \"città\", \"risposta\": \"breve\"}. Nomi: Valerio, Daniele, Costantino, Stefano."
                 },
                 {"role": "user", "content": msg}
             ],
@@ -119,11 +116,10 @@ def chat_ia():
         }
         
         response = requests.post(url, json=payload, headers=headers)
-        res_json = response.json()
-        return res_json['choices'][0]['message']['content']
+        return response.json()['choices'][0]['message']['content']
         
     except Exception as e:
-        return json.dumps({"risposta": "Errore collegamento Perplexity."})
+        return json.dumps({"risposta": "Errore collegamento IA."})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
