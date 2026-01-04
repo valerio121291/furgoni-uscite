@@ -1,75 +1,90 @@
 from flask import Flask, render_template, request, redirect, session
-import os, requests, base64, json
+import os
+import json
 from datetime import datetime
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 app = Flask(__name__)
-app.secret_key = "furgoni_final_2026"
+app.secret_key = os.getenv("SECRET_KEY", "furgoni-valerio-secret-2026")
 
-# CONFIGURAZIONE API (L'unica che attraversa i blocchi di Render)
-BREVO_API_KEY = "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"
-MITTENTE = "pvalerio910@gmail.com"
-DESTINATARIO = "valerio121291@hotmail.it"
+# CONFIGURAZIONI (Assicurati che queste variabili siano su Render)
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "1S_87-B9Y2hXN-f3p0XyO6fI87oT6pYmYV7N5vB8k") # Il tuo ID foglio
+RANGE_NAME = "Foglio1!A:H"
 
-def invia_con_api_brevo(pdf_path, filename):
-    """Invia il PDF tramite chiamata HTTP (porta 443), saltando i blocchi SMTP"""
+def ottieni_service_sheets():
+    """Connessione alle API di Google Sheets"""
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    if not creds_json:
+        return None
+    creds_dict = json.loads(creds_json)
+    creds = Credentials.from_service_account_info(
+        creds_dict, 
+        scopes=['https://www.googleapis.com/auth/spreadsheets']
+    )
+    return build('sheets', 'v4', credentials=creds)
+
+def scrivi_su_excel(dati_corsa):
+    """Aggiunge una riga al foglio Google Sheets"""
     try:
-        with open(pdf_path, "rb") as f:
-            pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
+        service = ottieni_service_sheets()
+        if not service:
+            print("Errore: Credenziali Google mancanti")
+            return
 
-        url = "https://api.brevo.com/v3/smtp/email"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "api-key": BREVO_API_KEY
-        }
-        payload = {
-            "sender": {"name": "Sistema Furgoni", "email": MITTENTE},
-            "to": [{"email": DESTINATARIO}],
-            "subject": f"🚚 Rapporto Corsa: {filename}",
-            "htmlContent": "<html><body><p>Rapporto in allegato.</p></body></html>",
-            "attachment": [{"content": pdf_base64, "name": filename}]
-        }
-
-        # Questa è una richiesta web normale, Render NON la blocca
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 201:
-            print("✅ SUCCESSO: Email inviata tramite API!")
-        else:
-            print(f"❌ ERRORE API: {response.text}")
+        values = [[
+            dati_corsa.get("data_p"),
+            dati_corsa.get("data_a"),
+            dati_corsa.get("autista"),
+            dati_corsa.get("targa"),
+            dati_corsa.get("partenza"),
+            dati_corsa.get("destinazione"),
+            dati_corsa.get("km_p"),
+            dati_corsa.get("km_a")
+        ]]
+        
+        body = {'values': values}
+        service.spreadsheets().values().append(
+            spreadsheetId=SPREADSHEET_ID,
+            range=RANGE_NAME,
+            valueInputOption="RAW",
+            body=body
+        ).execute()
+        print("✅ Dati salvati su Excel!")
     except Exception as e:
-        print(f"❌ ERRORE DI CONNESSIONE: {e}")
+        print(f"❌ Errore Sheets: {e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
+        
         if azione == "start":
+            # Salva i dati di inizio in sessione
             session["corsa"] = {
                 "autista": request.form.get("autista"),
                 "targa": request.form.get("targa"),
-                "km_p": request.form.get("km_partenza")
+                "partenza": request.form.get("partenza"),
+                "km_p": request.form.get("km_partenza"),
+                "data_p": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
+        
         elif azione == "stop" and "corsa" in session:
-            c = session.pop("corsa")
-            km_a = request.form.get("km_arrivo")
-            nome_f = f"Rapporto_{c['autista']}_{datetime.now().strftime('%H%M%S')}.pdf"
-            path = f"/tmp/{nome_f}"
+            # Recupera dati inizio e aggiungi dati fine
+            corsa = session.pop("corsa")
+            corsa.update({
+                "destinazione": request.form.get("destinazione"),
+                "km_a": request.form.get("km_arrivo"),
+                "data_a": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
             
-            # Generazione PDF semplice
-            doc = SimpleDocTemplate(path, pagesize=letter)
-            styles = getSampleStyleSheet()
-            elements = [Paragraph(f"Autista: {c['autista']}", styles['Heading1']), Spacer(1,12)]
-            doc.build(elements)
-            
-            # Invio via API
-            invia_con_api_brevo(path, nome_f)
+            # Scrittura finale su Google Drive
+            scrivi_su_excel(corsa)
             
         return redirect("/")
+    
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
