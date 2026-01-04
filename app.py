@@ -18,35 +18,37 @@ app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 # CONFIGURAZIONI RENDER
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_PASS = os.getenv("GMAIL_PASS")
+GMAIL_USER = os.getenv("GMAIL_USER") # Qui metterai la tua email Outlook
+GMAIL_PASS = os.getenv("GMAIL_PASS") # Qui metterai la password snuozokkvcrutrsp
 
 def invia_email_con_pdf(dati, pdf_buffer):
-    """Versione ottimizzata per evitare Timeout su Render"""
+    """Versione ottimizzata per Outlook/Hotmail"""
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = GMAIL_USER 
         msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
 
-        corpo = f"Rapporto della corsa di {dati['autista']} terminata il {dati['data_a']}."
+        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto della corsa terminata il {dati['data_a']}."
         msg.attach(MIMEText(corpo, 'plain'))
 
-        nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%H%M')}.pdf"
+        nome_file = f"Rapporto_{dati['autista']}.pdf"
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(pdf_buffer.getvalue())
         encoders.encode_base64(part)
         part.add_header('Content-Disposition', f"attachment; filename= {nome_file}")
         msg.attach(part)
 
-        # Connessione SSL ultra-veloce (Porta 465)
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20) as server:
-            server.login(GMAIL_USER, GMAIL_PASS)
-            server.send_message(msg)
+        # Configurazione per Outlook (Office 365)
+        server = smtplib.SMTP('smtp.office365.com', 587, timeout=30)
+        server.starttls() 
+        server.login(GMAIL_USER, GMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
         
-        print(f"✅ EMAIL INVIATA CON SUCCESSO!")
+        print(f"✅ EMAIL INVIATA CON SUCCESSO VIA OUTLOOK!")
     except Exception as e:
-        print(f"❌ ERRORE INVIO EMAIL: {e}")
+        print(f"❌ ERRORE INVIO OUTLOOK: {e}")
 
 def genera_pdf_buffer(dati):
     buffer = io.BytesIO()
@@ -97,7 +99,7 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
-            # 1. Excel
+            # 1. Excel (Sempre tramite il robot Google)
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
@@ -108,7 +110,7 @@ def index():
             except Exception as e:
                 print(f"❌ Errore Excel: {e}")
 
-            # 2. Email (PDF generato e inviato)
+            # 2. Email tramite Outlook
             pdf_buffer = genera_pdf_buffer(c)
             invia_email_con_pdf(c, pdf_buffer)
                 
