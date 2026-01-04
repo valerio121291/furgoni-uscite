@@ -3,46 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Uscita furgoni</title>
+  <title>Gestione Viaggi Furgoni</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; margin: 0; padding: 0; }
     .app-container { max-width: 480px; margin: 0 auto; padding: 16px; }
     .card { background: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-    h2 { margin-top: 0; text-align: center; font-size: 1.4rem; color: #111827; }
+    h2 { margin-top: 0; text-align: center; font-size: 1.4rem; color: #111827; border-bottom: 2px solid #eee; padding-bottom: 10px; }
     .field-group { margin-bottom: 14px; }
     .field-label { display: block; margin-bottom: 4px; font-size: 0.9rem; font-weight: 600; color: #374151; }
-    select, input[type="number"] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 1rem; background-color: #f9fafb; box-sizing: border-box; }
-    .row-2 { display: flex; gap: 10px; }
-    .row-2 .col { flex: 1; }
-    .btn-primary { width: 100%; margin-top: 8px; padding: 12px; font-size: 1rem; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; background: #2563eb; color: white; }
-    .btn-secondary { width: 100%; margin-top: 8px; padding: 12px; font-size: 1rem; border: none; border-radius: 999px; font-weight: 600; cursor: pointer; background: #f97316; color: white; }
-    .info { background: #eff6ff; border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; color: #1d4ed8; margin-bottom: 14px; border-left: 4px solid #2563eb; }
-    .muted { color: #6b7280; font-size: 0.85rem; }
-    
-    /* Animazione caricamento */
-    #loading { display: none; text-align: center; margin-top: 15px; color: #f97316; font-weight: bold; }
+    select, input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 1rem; background-color: #f9fafb; box-sizing: border-box; }
+    .btn { width: 100%; padding: 14px; font-size: 1rem; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; color: white; margin-top: 10px; }
+    .btn-start { background: #2563eb; }
+    .btn-step { background: #f97316; }
+    .btn-stop { background: #059669; }
+    .info-box { background: #eff6ff; border-radius: 8px; padding: 12px; font-size: 0.9rem; color: #1d4ed8; margin-bottom: 14px; border-left: 4px solid #2563eb; }
+    #loading { display: none; text-align: center; margin-top: 15px; color: #6b7280; font-weight: bold; }
+    .step-title { color: #6b7280; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: block; }
   </style>
 </head>
 <body>
   <div class="app-container">
     <div class="card">
-      <h2>Registra corsa furgone</h2>
-
-      {% if corsa_in_corso and corsa %}
-        <div class="info">
-          🚗 <strong>Corsa in corso</strong><br>
-          Autista: <strong>{{ corsa.autista }}</strong><br>
-          Furgone: <strong>{{ corsa.targa }}</strong><br>
-          Partito da: <strong>{{ corsa.partenza }}</strong> alle <strong>{{ corsa.data_p }}</strong>
-        </div>
-      {% endif %}
+      <h2>Diario di Bordo</h2>
 
       <form method="post" id="main-form">
+        
         {% if not corsa_in_corso %}
+          <span class="step-title">Fase 1: Partenza dalla Base</span>
           <div class="field-group">
             <span class="field-label">Autista</span>
             <select name="autista" required>
-              <option value="" disabled selected>Seleziona autista</option>
+              <option value="" disabled selected>Chi guida?</option>
               <option value="Valerio">Valerio</option>
               <option value="Costantino">Costantino</option>
               <option value="Simone">Simone</option>
@@ -50,119 +41,64 @@
               <option value="Daniele">Daniele</option>
             </select>
           </div>
-
           <div class="field-group">
-            <span class="field-label">Furgone (targa)</span>
-            <select id="targa-select" name="targa" required>
-              <option value="" disabled selected>Seleziona furgone</option>
-              <option value="GA087CH" data-size="piccolo">GA087CH</option>
-              <option value="GX942TS" data-size="medio">GX942TS</option>
-              <option value="GG862HC" data-size="grosso">GG862HC</option>
+            <span class="field-label">Furgone</span>
+            <select name="targa" required>
+              <option value="GA087CH">GA087CH (Piccolo)</option>
+              <option value="GX942TS">GX942TS (Medio)</option>
+              <option value="GG862HC">GG862HC (Grosso)</option>
             </select>
-            <div id="truck-text" class="muted" style="margin-top:6px;">Seleziona un furgone</div>
           </div>
-
           <div class="field-group">
-            <div class="row-2">
-              <div class="col">
-                <span class="field-label">Partenza</span>
-                <select name="partenza" required>
-                  <option value="" disabled selected>Da dove parti?</option>
-                  <option value="Tiburtina">Tiburtina</option>
-                  <option value="Rieti">Rieti</option>
-                  <option value="Cavour Viminale">Cavour Viminale</option>
-                  <option value="Via Genova">Via Genova</option>
-                  <option value="Policlinico">Policlinico</option>
-                  <option value="San Giovanni">San Giovanni</option>
-                  <option value="Fontechiari">Fontechiari</option>
-                  <option value="Nomentano">Nomentano</option>
-                  <option value="Sulmona">Sulmona</option>
-                  <option value="Pratica di Mare">Pratica di Mare</option>
-                  <option value="Spallanzani">Spallanzani</option>
-                  <option value="Avezzano">Avezzano</option>
-                  <option value="Castel di Sangro">Castel di Sangro</option>
-                  <option value="Fondazione Bietti">Fondazione Bietti</option>
-                  <option value="Tor Vergata">Tor Vergata</option>
-                  <option value="Studio legale Abrignani">Studio legale Abrignani</option>
-                  <option value="ACS Eur">ACS Eur</option>
-                  <option value="Teramo">Teramo</option>
-                  <option value="L'Aquila">L'Aquila</option>
-                </select>
-              </div>
-              <div class="col">
-                <span class="field-label">Km partenza</span>
-                <input type="number" name="km_partenza" min="0" required>
-              </div>
-            </div>
+            <span class="field-label">Punto di Partenza</span>
+            <input type="text" name="partenza" value="Tiburtina" required>
           </div>
-
-          <button class="btn-primary" type="submit" name="azione" value="start">Inizia corsa</button>
-
-        {% else %}
           <div class="field-group">
-            <div class="row-2">
-              <div class="col">
-                <span class="field-label">Destinazione</span>
-                <select name="destinazione" required>
-                  <option value="" disabled selected>Dove arrivi?</option>
-                  <option value="Tiburtina">Tiburtina</option>
-                  <option value="Rieti">Rieti</option>
-                  <option value="Cavour Viminale">Cavour Viminale</option>
-                  <option value="Via Genova">Via Genova</option>
-                  <option value="Policlinico">Policlinico</option>
-                  <option value="San Giovanni">San Giovanni</option>
-                  <option value="Fontechiari">Fontechiari</option>
-                  <option value="Nomentano">Nomentano</option>
-                  <option value="Sulmona">Sulmona</option>
-                  <option value="Pratica di Mare">Pratica di Mare</option>
-                  <option value="Spallanzani">Spallanzani</option>
-                  <option value="Avezzano">Avezzano</option>
-                  <option value="Castel di Sangro">Castel di Sangro</option>
-                  <option value="Fondazione Bietti">Fondazione Bietti</option>
-                  <option value="Tor Vergata">Tor Vergata</option>
-                  <option value="Studio legale Abrignani">Studio legale Abrignani</option>
-                  <option value="ACS Eur">ACS Eur</option>
-                  <option value="Teramo">Teramo</option>
-                  <option value="L'Aquila">L'Aquila</option>
-                </select>
-              </div>
-              <div class="col">
-                <span class="field-label">Km arrivo</span>
-                <input type="number" name="km_arrivo" min="0" required>
-              </div>
-            </div>
+            <span class="field-label">KM Partenza</span>
+            <input type="number" name="km_partenza" placeholder="Inserisci KM attuali" required>
           </div>
+          <button class="btn btn-start" type="submit" name="azione" value="start">INIZIA VIAGGIO</button>
 
-          <button class="btn-secondary" type="submit" name="azione" value="stop" onclick="showLoading()">Fine corsa</button>
-          <div id="loading">⏳ Generazione PDF in corso...</div>
+        {% elif corsa.stato == 'in_viaggio' %}
+          <div class="info-box">
+            🚗 <b>Viaggio in corso...</b><br>
+            {{ corsa.autista }} su {{ corsa.targa }}<br>
+            Partito da {{ corsa.partenza }} alle {{ corsa.data_p }}
+          </div>
+          <span class="step-title">Fase 2: Arrivo a Destinazione</span>
+          <div class="field-group">
+            <span class="field-label">Dove sei arrivato?</span>
+            <input type="text" name="destinazione" placeholder="es. Rieti, L'Aquila..." required>
+          </div>
+          <div class="field-group">
+            <span class="field-label">KM all'Arrivo</span>
+            <input type="number" name="km_destinazione" placeholder="KM segnati sul cruscotto" required>
+          </div>
+          <button class="btn btn-step" type="submit" name="azione" value="arrivo_dest">REGISTRA ARRIVO</button>
+
+        {% elif corsa.stato == 'arrivato' %}
+          <div class="info-box">
+            📍 <b>Fermo a {{ corsa.destinazione }}</b><br>
+            Arrivato alle {{ corsa.data_d }} con {{ corsa.km_d }} KM.
+          </div>
+          <span class="step-title">Fase 3: Rientro alla Base</span>
+          <div class="field-group">
+            <span class="field-label">KM Finali (al rientro a {{ corsa.partenza }})</span>
+            <input type="number" name="km_rientro" placeholder="KM al rientro" required>
+          </div>
+          <button class="btn btn-stop" type="submit" name="azione" value="stop" onclick="showLoading()">CHIUDI GIRO E SCARICA PDF</button>
+          <div id="loading">⏳ Elaborazione dati e PDF...</div>
         {% endif %}
+
       </form>
     </div>
   </div>
 
   <script>
     function showLoading() {
-      // Mostra il testo di caricamento dopo il click
-      setTimeout(function() {
-        document.getElementById('loading').style.display = 'block';
-      }, 100);
+      document.getElementById('loading').style.display = 'block';
     }
-
-    document.addEventListener("DOMContentLoaded", function() {
-      const select = document.getElementById("targa-select");
-      const info = document.getElementById("truck-text");
-      if (!select || !info) return;
-
-      function aggiornaTesto() {
-        const option = select.options[select.selectedIndex];
-        const size = option ? option.getAttribute("data-size") : null;
-        if (!size) { info.textContent = "Seleziona un furgone"; return; }
-        const icons = size === "piccolo" ? "🚚" : size === "medio" ? "🚚🚚" : "🚚🚚🚚";
-        info.textContent = icons + " Furgone " + size;
-      }
-      select.addEventListener("change", aggiornaTesto);
-      aggiornaTesto();
-    });
   </script>
 </body>
 </html>
+               
