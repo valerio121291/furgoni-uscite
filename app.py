@@ -1,4 +1,3 @@
-
 import os, json, io
 from flask import Flask, render_template, request, session, send_file, redirect, url_for
 from datetime import datetime
@@ -6,14 +5,17 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
-# Librerie per Google Sheets
+# Librerie Google
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import google.generativeai as genai
 
 app = Flask(__name__)
-app.secret_key = "logistica_csa_valerio_2026_top"
+app.secret_key = "logistica_csa_ia_2026"
 
-# File per la memoria permanente dello stato dei furgoni
+# Configurazione IA
+genai.configure(api_key="AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc")
+
 DB_FILE = "stato_furgoni.json"
 
 def carica_stato():
@@ -32,6 +34,15 @@ def salva_stato(stato):
     with open(DB_FILE, "w") as f: 
         json.dump(stato, f)
 
+def analisi_ia_viaggio(p, d, km, targa):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"Analizza brevemente: viaggio da {p} a {d} e ritorno, totale {km} km con furgone {targa}. Dimmi solo se i km sono ok e stima costo gasolio (max 12 parole)."
+        response = model.generate_content(prompt)
+        return response.text
+    except:
+        return "Analisi non disponibile"
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     furgoni = carica_stato()
@@ -44,13 +55,9 @@ def index():
 
         if azione == "start":
             furgoni[targa] = {
-                "targa": targa,
-                "stato": "In Viaggio",
-                "posizione": request.form.get("partenza"),
-                "km_p": request.form.get("km_partenza"),
-                "autista": request.form.get("autista"),
-                "step": 1,
-                "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "targa": targa, "stato": "In Viaggio", "posizione": request.form.get("partenza"),
+                "km_p": request.form.get("km_partenza"), "autista": request.form.get("autista"),
+                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
@@ -60,8 +67,7 @@ def index():
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
                 "km_d": request.form.get("km_destinazione"),
-                "step": 2,
-                "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 2, "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -69,9 +75,13 @@ def index():
         elif azione == "stop":
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
+            tot_km = int(km_r) - int(c['km_p'])
             data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-            # INVIO A GOOGLE SHEETS
+            # CHIAMATA ALL'INTELLIGENZA ARTIFICIALE
+            nota_ia = analisi_ia_viaggio(c['posizione'], c.get('dest_intermedia','-'), tot_km, targa)
+
+            # INVIO A EXCEL
             try:
                 creds_json = os.getenv("GOOGLE_CREDENTIALS")
                 spreadsheet_id = os.getenv("SPREADSHEET_ID")
@@ -79,45 +89,38 @@ def index():
                     info = json.loads(creds_json)
                     creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
                     service = build('sheets', 'v4', credentials=creds)
-                    nuova_riga = [[c['data_p'], c.get('data_d', '-'), data_r, c['autista'], targa, c['posizione'], c.get('dest_intermedia', '-'), c['km_p'], c.get('km_d', '-'), km_r]]
-                    service.spreadsheets().values().append(spreadsheetId=spreadsheet_id, range="Foglio1!A:J", valueInputOption="RAW", body={'values': nuova_riga}).execute()
+                    
+                    nuova_riga = [[
+                        c['data_p'], c.get('data_d', '-'), data_r, c['autista'], targa, 
+                        c['posizione'], c.get('dest_intermedia', '-'), c['km_p'], c.get('km_d', '-'), km_r, nota_ia
+                    ]]
+                    
+                    service.spreadsheets().values().append(
+                        spreadsheetId=spreadsheet_id, range="Foglio1!A:K",
+                        valueInputOption="RAW", body={'values': nuova_riga}
+                    ).execute()
             except Exception as e:
-                print(f"Errore Excel: {e}")
+                print(f"Errore: {e}")
 
-            # CREAZIONE PDF
+            # PDF (Logistica CSA)
             buffer = io.BytesIO()
-            p = canvas.Canvas(buffer, pagesize=A4)
-            p.setFont("Helvetica-Bold", 18)
-            p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            p.setFont("Helvetica", 12)
-            p.drawCentredString(300, 780, f"Furgone: {targa} | Autista: {c['autista']}")
-            
-            y = 720
-            def draw_block(titolo, info, km, data, y_pos, color_bg):
-                p.setFillColor(color_bg)
-                p.rect(50, y_pos-60, 500, 60, fill=1)
-                p.setFillColor(colors.black)
-                p.setFont("Helvetica-Bold", 11)
-                p.drawString(60, y_pos-20, titolo)
-                p.setFont("Helvetica", 10)
-                p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}")
-                p.drawString(60, y_pos-50, f"KM: {km}")
-                return y_pos - 80
-
-            y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
-            y = draw_block("2. ARRIVO DESTINAZIONE", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO ALLA BASE", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
-            
-            p.setFont("Helvetica-Bold", 14)
-            p.drawString(50, y-40, f"TOTALE KM: {int(km_r) - int(c['km_p'])}")
-            p.showPage()
-            p.save()
+            p_pdf = canvas.Canvas(buffer, pagesize=A4)
+            p_pdf.setFont("Helvetica-Bold", 16)
+            p_pdf.drawCentredString(300, 800, "LOGISTICA CSA - REPORT IA")
+            p_pdf.setFont("Helvetica", 10)
+            p_pdf.drawString(50, 750, f"Autista: {c['autista']} | Targa: {targa}")
+            p_pdf.drawString(50, 735, f"Percorso: {c['posizione']} -> {c.get('dest_intermedia','-')} -> Sede")
+            p_pdf.drawString(50, 720, f"KM Totali: {tot_km}")
+            p_pdf.line(50, 710, 550, 710)
+            p_pdf.drawString(50, 690, f"NOTE IA: {nota_ia}")
+            p_pdf.showPage()
+            p_pdf.save()
             buffer.seek(0)
 
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
-            return send_file(buffer, as_attachment=True, download_name=f"CSA_{targa}.pdf", mimetype='application/pdf')
+            return send_file(buffer, as_attachment=True, download_name=f"CSA_IA_{targa}.pdf", mimetype='application/pdf')
 
         elif azione == "annulla":
             if targa:
