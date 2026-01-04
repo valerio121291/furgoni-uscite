@@ -6,66 +6,112 @@
     <title>Logistica CSA</title>
     <style>
         :root { --bg: #020617; --card: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; }
-        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding-bottom: 120px; }
+        body { font-family: sans-serif; background: var(--bg); color: white; margin: 0; padding-bottom: 120px; overflow-x: hidden; }
         .header { background: #000; color: var(--accent); padding: 20px; text-align: center; font-weight: 800; border-bottom: 3px solid var(--accent); }
         .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; }
-        .truck-card { background: var(--card); padding: 10px; border-radius: 12px; text-align: center; border: 1px solid #334155; }
-        .truck-card.In.Viaggio { border-color: var(--warning); }
+        .truck-card { background: var(--card); padding: 15px 5px; border-radius: 12px; text-align: center; border: 1px solid #334155; }
+        .truck-card.In.Viaggio { border-color: var(--warning); box-shadow: 0 0 10px var(--warning); }
         .truck-card.Libero { border-color: var(--success); }
-        .card { background: var(--card); margin: 15px; padding: 20px; border-radius: 20px; }
-        label { display: block; margin-top: 10px; color: var(--accent); font-size: 0.8rem; font-weight: bold; }
-        select, input { width: 100%; padding: 15px; margin-top: 5px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; }
-        .btn { width: 100%; padding: 18px; margin-top: 20px; border-radius: 12px; border: none; font-weight: bold; color: white; text-transform: uppercase; cursor: pointer; }
+        .card { background: var(--card); margin: 15px; padding: 25px; border-radius: 20px; border: 1px solid #334155; }
+        label { display: block; margin-top: 15px; color: var(--accent); font-weight: bold; font-size: 0.8rem; }
+        select, input { width: 100%; padding: 15px; margin-top: 5px; border-radius: 10px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
+        .btn { width: 100%; padding: 20px; margin-top: 25px; border-radius: 15px; border: none; font-weight: bold; color: white; text-transform: uppercase; cursor: pointer; font-size: 1rem; }
         .btn-start { background: #0284c7; } .btn-next { background: #d97706; } .btn-stop { background: #16a34a; }
-        /* TASTO VOCALE */
-        #voiceBtn { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 85px; height: 85px; border-radius: 50%; background: var(--accent); border: 5px solid white; font-size: 40px; cursor: pointer; z-index: 9999; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(56,189,248,0.5); }
+        #voiceBtn { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90px; height: 90px; border-radius: 50%; background: var(--accent); border: 4px solid white; font-size: 40px; z-index: 9999; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(56,189,248,0.8); cursor: pointer; -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
 <body>
     <div class="header">LOGISTICA CSA</div>
+    
     <div class="status-container">
         <div class="truck-card {{ furgoni['GA087CH'].stato }}">🚚<br><strong>GA087CH</strong></div>
         <div class="truck-card {{ furgoni['GX942TS'].stato }}">🚚🚚<br><strong>GX942TS</strong></div>
         <div class="truck-card {{ furgoni['GG862HC'].stato }}">🚚🚚🚚<br><strong>GG862HC</strong></div>
     </div>
-    <div class="main-container"><div class="card"><form method="post">
+
+    <div class="main-container"><div class="card"><form method="post" id="mainForm">
         {% if not targa_attiva %}
-            <label>FURGONE</label><select name="targa"><option value="GA087CH">GA087CH</option><option value="GX942TS">GX942TS</option><option value="GG862HC">GG862HC</option></select>
-            <label>AUTISTA</label><select name="autista"><option>Valerio</option><option>Daniele</option><option>Costantino</option><option>Stefano</option></select>
-            <label>PARTENZA</label><select name="partenza" id="partenza"><option value="Tiburtina">Tiburtina</option><option value="Rieti">Rieti</option></select>
-            <label>KM INIZIO</label><input type="number" name="km_partenza" id="km_input" placeholder="000000">
-            <button type="submit" name="azione" value="start" class="btn btn-start">Inizia</button>
+            <label>SELEZIONA FURGONE</label>
+            <select name="targa"><option value="GA087CH">GA087CH</option><option value="GX942TS">GX942TS</option><option value="GG862HC">GG862HC</option></select>
+            <label>AUTISTA</label>
+            <select name="autista" id="select_autista"><option>Valerio</option><option>Daniele</option><option>Costantino</option><option>Stefano</option></select>
+            <label>PARTENZA</label>
+            <select name="partenza" id="select_partenza"><option value="Tiburtina">Tiburtina</option><option value="Rieti">Rieti</option><option value="Sede">Sede</option></select>
+            <label>CHILOMETRI INIZIALI</label>
+            <input type="number" name="km_partenza" id="km_input" placeholder="000000">
+            <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
         {% else %}
-            <div style="text-align:center; padding:10px;"><strong>{{ targa_attiva }}</strong></div>
+            <div style="text-align:center; padding:10px; background:#0c4a6e; border-radius:10px;"><strong>{{ targa_attiva }}</strong><br><small>Autista: {{ corsa_attiva.autista }}</small></div>
             <input type="hidden" name="targa" value="{{ targa_attiva }}">
             {% if corsa_attiva.step == 1 %}
-                <label>DESTINAZIONE</label><select name="destinazione" id="destinazione"><option value="Rieti">Rieti</option><option value="Avezzano">Avezzano</option></select>
-                <label>KM ARRIVO</label><input type="number" name="km_destinazione" id="km_input_2">
-                <button type="submit" name="azione" value="arrivo_dest" class="btn btn-next">Arrivato</button>
+                <label>DESTINAZIONE</label><select name="destinazione" id="select_dest"><option value="Rieti">Rieti</option><option value="L'Aquila">L'Aquila</option></select>
+                <label>KM ALL'ARRIVO</label><input type="number" name="km_destinazione" id="km_input_2">
+                <button type="submit" name="azione" value="arrivo_dest" class="btn btn-next">Registra Arrivo</button>
             {% else %}
-                <label>KM RIENTRO</label><input type="number" name="km_rientro" id="km_input_3">
-                <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi</button>
+                <label>KM RIENTRO IN SEDE</label><input type="number" name="km_rientro" id="km_input_3">
+                <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Missione</button>
             {% endif %}
-            <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:gray; width:100%; margin-top:20px;">Annulla</button>
+            <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:#64748b; width:100%; margin-top:20px;">× Annulla</button>
         {% endif %}
     </form></div></div>
+
     <button id="voiceBtn" type="button">🎙️</button>
+
     <script>
-        const btn = document.getElementById('voiceBtn');
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'it-IT';
-        btn.onclick = () => { recognition.start(); btn.style.background = 'red'; };
-        recognition.onresult = (e) => {
-            const text = e.results[0][0].transcript;
-            btn.style.background = '#38bdf8';
-            fetch('/chat_ia', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({messaggio: text}) })
-            .then(r => r.json()).then(d => {
-                if(d.partenza) { let s = document.getElementById('partenza'); if(s) s.add(new Option(d.partenza, d.partenza, true, true)); }
-                if(d.destinazione) { let s = document.getElementById('destinazione'); if(s) s.add(new Option(d.destinazione, d.destinazione, true, true)); }
-                if(d.km) { let i = document.getElementById('km_input') || document.getElementById('km_input_2') || document.getElementById('km_input_3'); if(i) i.value = d.km.replace(/\D/g,''); }
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance(d.risposta || "Fatto"));
-            });
-        };
+        const vBtn = document.getElementById('voiceBtn');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'it-IT';
+
+            vBtn.onclick = () => {
+                recognition.start();
+                vBtn.style.background = 'red';
+                vBtn.innerText = "🛑";
+            };
+
+            recognition.onresult = (e) => {
+                const transcript = e.results[0][0].transcript;
+                vBtn.style.background = '#38bdf8';
+                vBtn.innerText = "🎙️";
+                
+                fetch('/chat_ia', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({messaggio: transcript})
+                })
+                .then(r => r.json()).then(data => {
+                    // Compilazione Automatica
+                    if(data.autista) {
+                        let sel = document.getElementById('select_autista');
+                        if(sel) Array.from(sel.options).forEach(o => { if(o.text.includes(data.autista)) o.selected = true; });
+                    }
+                    if(data.partenza) {
+                        let sel = document.getElementById('select_partenza');
+                        if(sel) sel.add(new Option(data.partenza, data.partenza, true, true));
+                    }
+                    if(data.km) {
+                        let field = document.getElementById('km_input') || document.getElementById('km_input_2') || document.getElementById('km_input_3');
+                        if(field) field.value = data.km.replace(/\D/g,'');
+                    }
+                    if(data.destinazione) {
+                        let sel = document.getElementById('select_dest');
+                        if(sel) sel.add(new Option(data.destinazione, data.destinazione, true, true));
+                    }
+                    // Feedback Vocale
+                    const ut = new SpeechSynthesisUtterance(data.risposta || "Ho inserito i dati");
+                    ut.lang = 'it-IT';
+                    window.speechSynthesis.speak(ut);
+                });
+            };
+
+            recognition.onerror = () => { vBtn.style.background = '#38bdf8'; vBtn.innerText = "🎙️"; };
+            recognition.onend = () => { vBtn.style.background = '#38bdf8'; vBtn.innerText = "🎙️"; };
+
+        } else {
+            vBtn.onclick = () => alert("Microfono non supportato su questo browser. Usa Chrome.");
+        }
     </script>
 </body>
 </html>
