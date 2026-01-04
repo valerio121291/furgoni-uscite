@@ -1,4 +1,4 @@
-import os, json, io, smtplib
+import os, json, io, smtplib, threading
 from flask import Flask, render_template, request, redirect, session
 from datetime import datetime
 from google.oauth2.service_account import Credentials
@@ -15,40 +15,38 @@ from email import encoders
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
-# CONFIGURAZIONI RENDER
+# CONFIGURAZIONI
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
-GMAIL_USER = os.getenv("GMAIL_USER") # Qui metterai la tua email Outlook
-GMAIL_PASS = os.getenv("GMAIL_PASS") # Qui metterai la password snuozokkvcrutrsp
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_PASS = os.getenv("GMAIL_PASS")
 
-def invia_email_con_pdf(dati, pdf_buffer):
-    """Versione ottimizzata per Outlook/Hotmail"""
+def invia_email_con_pdf(dati, pdf_content):
+    """Invia l'email in un processo separato per evitare il timeout"""
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = GMAIL_USER 
-        msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
+        msg['Subject'] = f"Rapporto Corsa: {dati['autista']}"
 
-        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto della corsa terminata il {dati['data_a']}."
+        corpo = f"Rapporto della corsa terminata il {dati['data_a']}."
         msg.attach(MIMEText(corpo, 'plain'))
 
-        nome_file = f"Rapporto_{dati['autista']}.pdf"
         part = MIMEBase('application', 'octet-stream')
-        part.set_payload(pdf_buffer.getvalue())
+        part.set_payload(pdf_content)
         encoders.encode_base64(part)
-        part.add_header('Content-Disposition', f"attachment; filename= {nome_file}")
+        part.add_header('Content-Disposition', f"attachment; filename= Rapporto_{dati['autista']}.pdf")
         msg.attach(part)
 
-        # Configurazione per Outlook (Office 365)
+        # Usiamo Outlook/Office365 che è più stabile su porta 587
         server = smtplib.SMTP('smtp.office365.com', 587, timeout=30)
-        server.starttls() 
+        server.starttls()
         server.login(GMAIL_USER, GMAIL_PASS)
         server.send_message(msg)
         server.quit()
-        
-        print(f"✅ EMAIL INVIATA CON SUCCESSO VIA OUTLOOK!")
+        print(f"✅ EMAIL INVIATA CON SUCCESSO!")
     except Exception as e:
-        print(f"❌ ERRORE INVIO OUTLOOK: {e}")
+        print(f"❌ ERRORE INVIO EMAIL: {e}")
 
 def genera_pdf_buffer(dati):
     buffer = io.BytesIO()
@@ -56,8 +54,7 @@ def genera_pdf_buffer(dati):
     styles = getSampleStyleSheet()
     try:
         tot_km = int(dati['km_a']) - int(dati['km_p'])
-    except:
-        tot_km = "N/D"
+    except: tot_km = "N/D"
 
     elementi = [
         Paragraph(f"RIEPILOGO CORSA - {dati['autista']}", styles['Heading1']),
@@ -75,14 +72,12 @@ def genera_pdf_buffer(dati):
         ])),
     ]
     doc.build(elementi)
-    buffer.seek(0)
-    return buffer
+    return buffer.getvalue()
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         azione = request.form.get("azione")
-        
         if azione == "start":
             session["corsa"] = {
                 "autista": request.form.get("autista"),
@@ -99,7 +94,7 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
-            # 1. Excel (Sempre tramite il robot Google)
+            # 1. Excel
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
@@ -107,12 +102,12 @@ def index():
                 values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
                 service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
                 print("✅ Excel aggiornato")
-            except Exception as e:
-                print(f"❌ Errore Excel: {e}")
+            except Exception as e: print(f"❌ Errore Excel: {e}")
 
-            # 2. Email tramite Outlook
-            pdf_buffer = genera_pdf_buffer(c)
-            invia_email_con_pdf(c, pdf_buffer)
+            # 2. Email (In background così il sito non si blocca)
+            pdf_content = genera_pdf_buffer(c)
+            email_thread = threading.Thread(target=invia_email_con_pdf, args=(c, pdf_content))
+            email_thread.start()
                 
         return redirect("/")
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
