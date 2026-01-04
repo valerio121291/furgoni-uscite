@@ -5,6 +5,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
+# Librerie per Google Sheets
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+
 app = Flask(__name__)
 app.secret_key = "valerio_centrale_blindata_2026_gps"
 
@@ -68,8 +72,42 @@ def index():
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
-            
-            # Creazione PDF in memoria
+
+            # --- PARTE NUOVA: INVIO A GOOGLE SHEETS ---
+            try:
+                creds_json = os.getenv("GOOGLE_CREDENTIALS")
+                spreadsheet_id = os.getenv("SPREADSHEET_ID")
+                
+                if creds_json and spreadsheet_id:
+                    info = json.loads(creds_json)
+                    creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+                    service = build('sheets', 'v4', credentials=creds)
+                    
+                    # Mapping colonne come richiesto da te:
+                    # Data P | Arrivo Dest | Rientro Base | Autista | Targa | Partenza | Destinazione | KM Inizio | KM Metà | KM Fine
+                    nuova_riga = [[
+                        c['data_p'], 
+                        c.get('data_d', '-'), 
+                        data_r, 
+                        c['autista'], 
+                        targa, 
+                        c['posizione'], 
+                        c.get('dest_intermedia', '-'), 
+                        c['km_p'], 
+                        c.get('km_d', '-'), 
+                        km_r
+                    ]]
+                    
+                    service.spreadsheets().values().append(
+                        spreadsheetId=spreadsheet_id,
+                        range="Foglio1!A:J",
+                        valueInputOption="RAW",
+                        body={'values': nuova_riga}
+                    ).execute()
+            except Exception as e:
+                print(f"Errore Excel: {e}")
+
+            # --- CREAZIONE PDF ---
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setTitle(f"Report_{targa}")
@@ -125,3 +163,4 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+               
