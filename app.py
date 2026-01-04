@@ -7,10 +7,9 @@ app.secret_key = "csa_logistica_2026_pplx_final"
 
 # CHIAVE PERPLEXITY
 PPLX_KEY = os.getenv("PPLX_KEY", "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")
-
 DB_FILE = "stato_furgoni.json"
 
-# --- 1. DEFINIZIONE FUNZIONI (Devono stare in alto!) ---
+# --- 1. PRIMA DEFINIAMO LE FUNZIONI (LE FONDAMENTA) ---
 
 def salva_stato(stato):
     with open(DB_FILE, "w") as f:
@@ -31,11 +30,11 @@ def carica_stato():
     except:
         return {}
 
-# --- 2. ROTTE DELL'APPLICAZIONE ---
+# --- 2. POI DEFINIAMO LE ROTTE (IL SITO VERO E PROPRIO) ---
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # Ora carica_stato() è definita sopra, quindi funzionerà!
+    # Ora Python sa già cos'è carica_stato perché l'ha letto sopra!
     furgoni = carica_stato()
     targa_attiva = session.get("targa_in_uso")
     corsa_attiva = furgoni.get(targa_attiva) if targa_attiva else None
