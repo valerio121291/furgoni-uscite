@@ -7,9 +7,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 app = Flask(__name__)
-app.secret_key = "valerio_pdf_final_2026"
+app.secret_key = "valerio_forza_pdf_2026"
 
-# Configurazione
+# Configurazione Render
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
 
@@ -26,7 +26,7 @@ def index():
                 "km_p": request.form.get("km_partenza"),
                 "data_p": datetime.now().strftime("%d/%m %H:%M")
             }
-            return render_template("form.html", corsa=session["corsa"], corsa_in_corso=True)
+            return redirect("/")
             
         elif azione == "stop" and "corsa" in session:
             c = session.pop("corsa")
@@ -34,7 +34,7 @@ def index():
             km_a = request.form.get("km_arrivo")
             data_a = datetime.now().strftime("%d/%m %H:%M")
 
-            # 1. SALVATAGGIO EXCEL (Silenzioso)
+            # 1. SALVA SU EXCEL
             try:
                 if CREDS_JSON and SPREADSHEET_ID:
                     info = json.loads(CREDS_JSON)
@@ -48,47 +48,40 @@ def index():
             except Exception as e:
                 print(f"Errore Excel: {e}")
 
-            # 2. GENERAZIONE PDF
+            # 2. GENERA IL PDF (Questo file verrà scaricato dall'autista)
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
-            p.setTitle(f"Rapporto_{c['autista']}")
+            p.setFont("Helvetica-Bold", 18)
+            p.drawString(50, 800, "RAPPORTO USCITA FURGONE")
+            p.line(50, 795, 550, 795)
             
-            # Disegno del PDF
-            p.setFont("Helvetica-Bold", 20)
-            p.drawString(50, 800, "REPORT USCITA FURGONE")
-            p.line(50, 790, 550, 790)
-            
-            p.setFont("Helvetica", 14)
-            p.drawString(50, 760, f"Autista: {c['autista']}")
-            p.drawString(50, 740, f"Targa Veicolo: {c['targa']}")
-            
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, 700, "DETTAGLI VIAGGIO:")
             p.setFont("Helvetica", 12)
-            p.drawString(50, 680, f"Partenza da: {c['partenza']} ({c['data_p']}) - KM: {c['km_p']}")
-            p.drawString(50, 660, f"Arrivo a: {dest} ({data_a}) - KM: {km_a}")
+            p.drawString(50, 770, f"Autista: {c['autista']}")
+            p.drawString(50, 755, f"Targa: {c['targa']}")
+            p.drawString(50, 730, f"Partenza: {c['partenza']} - {c['data_p']} (KM: {c['km_p']})")
+            p.drawString(50, 715, f"Arrivo: {dest} - {data_a} (KM: {km_a})")
             
             try:
-                totale = int(km_a) - int(c['km_p'])
                 p.setFont("Helvetica-Bold", 14)
-                p.drawString(50, 620, f"CHILOMETRI TOTALI: {totale} km")
-            except:
-                pass
-
+                p.drawString(50, 680, f"TOTALE PERCORSO: {int(km_a) - int(c['km_p'])} km")
+            except: pass
+            
             p.showPage()
             p.save()
             buffer.seek(0)
 
-            # 3. INVIO DEL FILE PDF AL BROWSER (Scarica sul telefono)
+            # IL COMANDO CHE SCARICA IL FILE
             return send_file(
                 buffer,
                 as_attachment=True,
-                download_name=f"Rapporto_{c['autista']}_{datetime.now().strftime('%d%m')}.pdf",
+                download_name=f"Rapporto_{c['autista']}.pdf",
                 mimetype='application/pdf'
             )
 
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
+# Aggiunto redirect per pulire la pagina dopo lo start
+from flask import redirect
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
