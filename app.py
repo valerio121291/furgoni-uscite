@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni-valerio-secret-2026")
 
 # CONFIGURAZIONI (Assicurati che queste variabili siano su Render)
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "1S_87-B9Y2hXN-f3p0XyO6fI87oT6pYmYV7N5vB8k") # Il tuo ID foglio
+SPREADSHEET_ID = "13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68"
 RANGE_NAME = "Foglio1!A:H"
 
 def ottieni_service_sheets():
