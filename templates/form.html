@@ -3,79 +3,163 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Furgoni IA Dark</title>
+    <title>Centrale Furgoni Valerio - IA Dark</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 15px; margin: 0; }
+        /* TEMA SCURO */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; padding: 15px; margin: 0; }
         .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-        .truck { background: #1e1e1e; padding: 10px; border-radius: 8px; text-align: center; font-size: 0.75rem; border: 1px solid #333; }
-        .In.Viaggio { border-left: 5px solid #f97316; color: #f97316; }
-        .Libero { border-left: 5px solid #10b981; color: #10b981; }
-        .main-card { background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        select, input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #444; background: #2d2d2d; color: white; font-size: 1rem; }
-        button { width: 100%; padding: 15px; margin-top: 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
-        .btn-blue { background: #2563eb; color: white; }
-        .btn-voice { background: #dc2626; color: white; margin-bottom: 20px; font-size: 1.1rem; }
-        #v-status { text-align: center; color: #aaa; font-size: 0.9rem; margin-top: -10px; margin-bottom: 10px; }
+        .truck-card { background: #1e1e1e; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.75rem; border: 1px solid #333; transition: 0.3s; }
+        .In.Viaggio { border-top: 4px solid #f97316; color: #f97316; }
+        .Libero { border-top: 4px solid #059669; color: #059669; }
+        
+        .main-card { background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #333; }
+        
+        h3 { color: #2563eb; margin-top: 0; }
+        label { display: block; margin-top: 15px; font-size: 0.9rem; color: #aaa; }
+        
+        select, input, button { width: 100%; padding: 12px; margin-top: 8px; border-radius: 8px; border: 1px solid #444; box-sizing: border-box; font-size: 1rem; }
+        select, input { background: #2d2d2d; color: white; }
+        
+        /* BOTTONI */
+        button { background: #2563eb; color: white; font-weight: bold; border: none; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        .btn-voice { background: #dc2626; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .btn-gps { background: #4b5563; font-size: 0.8rem; padding: 8px; margin-top: 5px; }
+        .btn-stop { background: #059669; }
+        .btn-annulla { background: transparent; color: #666; border: 1px solid #444; margin-top: 30px; font-size: 0.8rem; }
+        
+        .info-box { background: #1a2233; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9rem; border-left: 4px solid #2563eb; color: #fff; }
+        #stato-ia { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 15px; }
     </style>
 </head>
 <body>
+
     <div class="status-grid">
         {% for t, info in furgoni.items() %}
-        <div class="truck {{ info.stato }}"><strong>{{ t }}</strong><br>{{ info.stato }}</div>
+        <div class="truck-card {{ info.stato }}">
+            <strong>{{ t }}</strong><br>
+            {{ info.stato }}<br>
+            <small>📍 {{ info.posizione }}</small>
+        </div>
         {% endfor %}
     </div>
 
     <div class="main-card">
         {% if not targa_attiva %}
-            <button type="button" class="btn-voice" id="start-voice">🎤 PARLA E COMPILA</button>
-            <div id="v-status">Tocca il microfono e parla</div>
+            <button type="button" class="btn-voice" id="btn-vocale">
+                <span>🎤</span> PARLA PER COMPILARE
+            </button>
+            <div id="stato-ia">Tocca e di' ad esempio: "Sono Valerio, parto col grande da Rieti, km 1500"</div>
 
-            <form method="post">
-                <h3 style="color:#2563eb">Partenza</h3>
-                <label>Mezzo</label>
-                <select name="targa" id="targa">
-                    <option value="GA087CH">Piccolo (GA087CH)</option>
-                    <option value="GX942TS">Medio (GX942TS)</option>
-                    <option value="GG862HC">Grande (GG862HC)</option>
+            <form method="post" id="mainForm">
+                <h3>Inizia Viaggio</h3>
+                
+                <label>Furgone</label>
+                <select name="targa" id="targa" required>
+                    <option value="GA087CH">GA087CH (Piccolo)</option>
+                    <option value="GX942TS">GX942TS (Medio)</option>
+                    <option value="GG862HC">GG862HC (Grosso)</option>
                 </select>
+
                 <label>Autista</label>
                 <select name="autista" id="autista">
-                    <option>Valerio</option><option>Daniele</option><option>Costantino</option><option>Simone</option><option>Stefano</option>
+                    <option value="Valerio">Valerio</option>
+                    <option value="Daniele">Daniele</option>
+                    <option value="Costantino">Costantino</option>
+                    <option value="Simone">Simone</option>
+                    <option value="Stefano">Stefano</option>
                 </select>
-                <label>Luogo Partenza</label>
+
+                <label>Partenza</label>
                 <select name="partenza" id="partenza">
-                    <option>Tiburtina</option><option>Sede</option><option>Rieti</option><option>L'Aquila</option>
+                    <option value="Sede">Sede / Tiburtina</option>
+                    <option value="Rieti">Rieti</option>
+                    <option value="Cavour Viminale">Cavour Viminale</option>
+                    <option value="Via Genova">Via Genova</option>
+                    <option value="Policlinico">Policlinico</option>
+                    <option value="San Giovanni">San Giovanni</option>
+                    <option value="L'Aquila">L'Aquila</option>
+                    <option value="Teramo">Teramo</option>
+                    <option value="Avezzano">Avezzano</option>
                 </select>
-                <input type="number" name="km_partenza" id="km_partenza" placeholder="KM Iniziali" required>
-                <button type="submit" name="azione" value="start" class="btn-blue">INIZIA VIAGGIO</button>
+                <button type="button" class="btn-gps" onclick="rilevaPosizione('partenza')">📍 Usa posizione attuale (GPS)</button>
+
+                <label>Chilometri Iniziali</label>
+                <input type="number" name="km_partenza" id="km_partenza" placeholder="Esempio: 125400" required>
+                
+                <button type="submit" name="azione" value="start">INIZIA VIAGGIO</button>
             </form>
+
         {% else %}
-            <h3 style="color:#f97316">Viaggio in corso: {{ targa_attiva }}</h3>
+            <div class="info-box">
+                🚜 Mezzo: <strong>{{ targa_attiva }}</strong><br>
+                👤 Autista: <strong>{{ corsa_attiva.autista }}</strong>
+            </div>
+            
             <form method="post">
                 <input type="hidden" name="targa" value="{{ targa_attiva }}">
-                <button type="submit" name="azione" value="annulla" style="background:#444; color:white;">Annulla Viaggio</button>
+
+                {% if corsa_attiva.step == 1 %}
+                    <h3>Fase 2: Arrivo a Destinazione</h3>
+                    <label>Destinazione Raggiunta</label>
+                    <select name="destinazione" id="destinazione">
+                        <option value="Rieti">Rieti</option>
+                        <option value="Tiburtina">Tiburtina</option>
+                        <option value="L'Aquila">L'Aquila</option>
+                        <option value="Cavour Viminale">Cavour Viminale</option>
+                        <option value="Via Genova">Via Genova</option>
+                        <option value="Policlinico">Policlinico</option>
+                        <option value="Avezzano">Avezzano</option>
+                        <option value="Teramo">Teramo</option>
+                        <option value="Sede">Sede</option>
+                    </select>
+                    <button type="button" class="btn-gps" onclick="rilevaPosizione('destinazione')">📍 Rileva dove sono ora</button>
+
+                    <label>Chilometri all'Arrivo</label>
+                    <input type="number" name="km_destinazione" placeholder="KM Arrivo" required>
+                    
+                    <button type="submit" name="azione" value="arrivo_dest">REGISTRA ARRIVO</button>
+
+                {% elif corsa_attiva.step == 2 %}
+                    <h3>Fase 3: Rientro alla Base</h3>
+                    <p style="font-size: 0.9rem; color: #888;">Stai rientrando alla sede di Tiburtina.</p>
+                    
+                    <label>Chilometri Finali (Rientro)</label>
+                    <input type="number" name="km_rientro" placeholder="KM Finali" required>
+                    
+                    <button type="submit" name="azione" value="stop" class="btn-stop">CHIUDI E SCARICA PDF</button>
+                {% endif %}
+                
+                <button type="submit" name="azione" value="annulla" class="btn-annulla">Annulla Viaggio</button>
             </form>
         {% endif %}
     </div>
 
     <script>
-    const btn = document.getElementById('start-voice');
-    const status = document.getElementById('v-status');
-    
+    // --- LOGICA MICROFONO E IA ---
+    const btnIA = document.getElementById('btn-vocale');
+    const statoIA = document.getElementById('stato-ia');
+
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = "it-IT";
-        
-        btn.onclick = () => { recognition.start(); status.innerText = "Ti ascolto..."; };
-        
+        recognition.continuous = false;
+
+        btnIA.onclick = () => { 
+            recognition.start(); 
+            statoIA.innerText = "Ti ascolto... parla ora";
+            statoIA.style.color = "#ef4444";
+        };
+
         recognition.onresult = (event) => {
-            const text = event.results[0][0].transcript;
-            status.innerText = "Analisi IA: " + text;
-            
+            const transcript = event.results[0][0].transcript;
+            statoIA.innerText = "IA sta analizzando: " + transcript;
+            statoIA.style.color = "#2563eb";
+
             fetch('/process_voice', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({text: text})
+                body: JSON.stringify({text: transcript})
             })
             .then(res => res.json())
             .then(data => {
@@ -83,16 +167,40 @@
                 if(data.autista) document.getElementById('autista').value = data.autista;
                 if(data.km) document.getElementById('km_partenza').value = data.km;
                 if(data.partenza) {
+                    let sel = document.getElementById('partenza');
                     let opt = new Option(data.partenza, data.partenza, true, true);
-                    document.getElementById('partenza').add(opt);
+                    sel.add(opt);
                 }
-                status.innerText = "Dati compilati con successo!";
+                statoIA.innerText = "Dati compilati correttamente!";
+                statoIA.style.color = "#059669";
             })
-            .catch(() => { status.innerText = "Errore durante l'analisi."; });
+            .catch(err => {
+                statoIA.innerText = "Errore IA. Prova a scrivere a mano.";
+                statoIA.style.color = "#888";
+            });
         };
     } else {
-        btn.style.display = 'none';
-        status.innerText = "Microfono non supportato su questo browser.";
+        btnIA.style.display = 'none';
+        statoIA.innerText = "Microfono non supportato su questo browser.";
+    }
+
+    // --- LOGICA GPS ---
+    function rilevaPosizione(idCampo) {
+        const campo = document.getElementById(idCampo);
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const nome = data.address.city || data.address.town || data.address.village || "Posizione Rilevata";
+                        const opt = new Option(nome, nome, true, true);
+                        campo.add(opt);
+                        alert("Posizione rilevata: " + nome);
+                    });
+            });
+        }
     }
     </script>
 </body>
