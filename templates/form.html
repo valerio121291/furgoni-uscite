@@ -1,73 +1,50 @@
-import os, json, io
-from flask import Flask, render_template, request, session, send_file, redirect
-from datetime import datetime, timedelta
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Centrale Furgoni</title>
+  <style>
+    body { font-family: sans-serif; background: #f0f2f5; padding: 10px; }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .truck-card { background: white; padding: 10px; border-radius: 10px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .truck-card.In.Viaggio { border-left: 5px solid #f97316; }
+    .truck-card.Libero { border-left: 5px solid #059669; }
+    .tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; color: white; }
+    .tag.green { background: #059669; }
+    .tag.orange { background: #f97316; }
+    .alert { color: red; font-weight: bold; font-size: 0.7rem; }
+    .form-container { background: white; padding: 20px; border-radius: 15px; }
+    input, select, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #ccc; }
+    button { background: #2563eb; color: white; font-weight: bold; border: none; }
+  </style>
+</head>
+<body>
 
-app = Flask(__name__)
-app.secret_key = "valerio_centrale_2026"
+  <div class="status-grid">
+    {% for targa, info in furgoni.items() %}
+    <div class="truck-card {{ info.stato }}">
+      <div style="font-weight: bold;">{{ targa }}</div>
+      <div class="tag {{ 'green' if info.stato == 'Libero' else 'orange' }}">{{ info.stato }}</div>
+      <div style="font-size: 0.8rem; margin-top: 5px;">📍 {{ info.posizione }}</div>
+      <div style="font-size: 0.8rem; color: #666;">{{ info.km }} KM</div>
+      {% if info.alert %}<div class="alert">{{ info.alert }}</div>{% endif %}
+      <div style="font-size: 0.7rem; font-style: italic;">{{ info.autista }}</div>
+    </div>
+    {% endfor %}
+  </div>
 
-# Database fittizio per lo stato globale dei furgoni
-DB_FILE = "stato_furgoni.json"
+  <div class="form-container">
+    <h3>Registra Attività</h3>
+    <form method="post">
+      <select name="targa" required>
+         <option value="GA087CH">GA087CH</option>
+         <option value="GX942TS">GX942TS</option>
+         <option value="GG862HC">GG862HC</option>
+      </select>
+      <button type="submit" name="azione" value="start">Inizia</button>
+    </form>
+  </div>
 
-def carica_stato():
-    if not os.path.exists(DB_FILE):
-        return {
-            "GA087CH": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""},
-            "GX942TS": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""},
-            "GG862HC": {"stato": "Libero", "posizione": "Tiburtina", "km": 0, "autista": "-", "alert": ""}
-        }
-    with open(DB_FILE, "r") as f: return json.load(f)
-
-def salva_stato(stato):
-    with open(DB_FILE, "w") as f: json.dump(stato, f)
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    stato_globale = carica_stato()
-    
-    if request.method == "POST":
-        azione = request.form.get("azione")
-        targa = request.form.get("targa")
-        
-        if azione == "start":
-            autista = request.form.get("autista")
-            km_p = int(request.form.get("km_partenza"))
-            # Aggiorno stato globale
-            stato_globale[targa] = {
-                "stato": "In Viaggio",
-                "posizione": request.form.get("partenza"),
-                "km": km_p,
-                "autista": autista,
-                "alert": ""
-            }
-            salva_stato(stato_globale)
-            session[f"corsa_{targa}"] = {"targa": targa, "autista": autista, "km_p": km_p, "step": 1}
-            
-        elif azione == "arrivo_dest":
-            dest = request.form.get("destinazione")
-            km_d = int(request.form.get("km_destinazione"))
-            stato_globale[targa]["posizione"] = dest
-            stato_globale[targa]["km"] = km_d
-            salva_stato(stato_globale)
-            session[f"corsa_{targa}"]["step"] = 2
-            session[f"corsa_{targa}"]["dest"] = dest
-            session[f"corsa_{targa}"]["km_d"] = km_d
-            session.modified = True
-
-        elif azione == "stop":
-            km_f = int(request.form.get("km_rientro"))
-            # Controllo Manutenzione (esempio ogni 20.000 km)
-            alert = "⚠️ TAGLIANDO VICINO" if km_f % 20000 > 19500 else ""
-            
-            stato_globale[targa] = {
-                "stato": "Libero",
-                "posizione": "Tiburtina",
-                "km": km_f,
-                "autista": "-",
-                "alert": alert
-            }
-            salva_stato(stato_globale)
-            session.pop(f"corsa_{targa}", None)
-            # Qui andrebbe la logica del PDF (omessa per brevità, resta uguale a prima)
-            return redirect("/")
-
-    return render_template("form.html", furgoni=stato_globale)
+</body>
+</html>
