@@ -16,6 +16,7 @@ from email import encoders
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
+# Caricamento variabili da Render
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
 GMAIL_USER = os.getenv("GMAIL_USER")
@@ -27,16 +28,16 @@ def invia_email_gmx(dati, pdf_content):
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = GMAIL_USER 
-        msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['targa']}"
-        msg.attach(MIMEText(f"In allegato il rapporto PDF della corsa di {dati['autista']}.", 'plain'))
+        msg['Subject'] = f"Rapporto Corsa: {dati['autista']}"
+        msg.attach(MIMEText("In allegato il rapporto PDF della corsa.", 'plain'))
 
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(pdf_content)
         encoders.encode_base64(part)
-        part.add_header('Content-Disposition', f"attachment; filename=Rapporto_{dati['autista']}.pdf")
+        part.add_header('Content-Disposition', f"attachment; filename=Rapporto.pdf")
         msg.attach(part)
 
-        # Server GMX: mail.gmx.com porta 587
+        # Server GMX porta 587
         with smtplib.SMTP("mail.gmx.com", 587, timeout=30) as server:
             server.starttls()
             server.login(GMAIL_USER, GMAIL_PASS)
@@ -49,22 +50,12 @@ def genera_pdf_buffer(dati):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
-    try:
-        tot_km = int(dati['km_a']) - int(dati['km_p'])
-    except: tot_km = "N/D"
-
     elementi = [
         Paragraph(f"RIEPILOGO CORSA - {dati['autista']}", styles['Heading1']),
         Spacer(1, 12),
-        Table([
-            ["Autista", dati['autista']], ["Targa", dati['targa']],
-            ["Inizio", dati['data_p']], ["Fine", dati['data_a']],
-            ["KM TOTALI", str(tot_km)]
-        ], style=TableStyle([
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-            ('BACKGROUND', (0,0), (0,-1), colors.lightgrey),
-            ('PADDING', (0,0), (-1,-1), 8)
-        ])),
+        Paragraph(f"Targa: {dati['targa']}", styles['Normal']),
+        Paragraph(f"Partenza: {dati['data_p']} ({dati['km_p']} KM)", styles['Normal']),
+        Paragraph(f"Arrivo: {dati['data_a']} ({dati['km_a']} KM)", styles['Normal'])
     ]
     doc.build(elementi)
     return buffer.getvalue()
@@ -94,7 +85,8 @@ def index():
                 values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
                 service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
                 print("✅ Excel aggiornato")
-            except: print("❌ Errore Excel")
+            except Exception as e:
+                print(f"❌ Errore Excel: {e}")
 
             # 2. PDF ed Email in Background
             pdf_content = genera_pdf_buffer(c)
