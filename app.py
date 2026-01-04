@@ -15,21 +15,21 @@ from email import encoders
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "furgoni_2026_valerio")
 
-# CONFIGURAZIONI DA RENDER
+# CONFIGURAZIONI RENDER
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_PASS = os.getenv("GMAIL_PASS")
 
 def invia_email_con_pdf(dati, pdf_buffer):
-    """Invia il rapporto PDF via email usando Gmail"""
+    """Versione ottimizzata per evitare Timeout su Render"""
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = GMAIL_USER 
         msg['Subject'] = f"Rapporto Corsa: {dati['autista']} - {dati['data_a']}"
 
-        corpo = f"Ciao Valerio,\n\nIn allegato trovi il rapporto PDF della corsa di {dati['autista']} terminata il {dati['data_a']}."
+        corpo = f"Rapporto della corsa di {dati['autista']} terminata il {dati['data_a']}."
         msg.attach(MIMEText(corpo, 'plain'))
 
         nome_file = f"Rapporto_{dati['autista']}_{datetime.now().strftime('%H%M')}.pdf"
@@ -39,22 +39,19 @@ def invia_email_con_pdf(dati, pdf_buffer):
         part.add_header('Content-Disposition', f"attachment; filename= {nome_file}")
         msg.attach(part)
 
-        # Connessione SMTP sicura
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GMAIL_USER, GMAIL_PASS)
-        server.send_message(msg)
-        server.quit()
-        print(f"✅ Email inviata con successo a {GMAIL_USER}")
+        # Connessione SSL ultra-veloce (Porta 465)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=20) as server:
+            server.login(GMAIL_USER, GMAIL_PASS)
+            server.send_message(msg)
+        
+        print(f"✅ EMAIL INVIATA CON SUCCESSO!")
     except Exception as e:
-        print(f"❌ Errore Invio Email: {e}")
+        print(f"❌ ERRORE INVIO EMAIL: {e}")
 
 def genera_pdf_buffer(dati):
-    """Crea il PDF in memoria"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
-    
     try:
         tot_km = int(dati['km_a']) - int(dati['km_p'])
     except:
@@ -64,14 +61,10 @@ def genera_pdf_buffer(dati):
         Paragraph(f"RIEPILOGO CORSA - {dati['autista']}", styles['Heading1']),
         Spacer(1, 12),
         Table([
-            ["Autista", dati['autista']],
-            ["Targa", dati['targa']],
-            ["Da", dati['partenza']],
-            ["A", dati['destinazione']],
-            ["Inizio", dati['data_p']],
-            ["Fine", dati['data_a']],
-            ["KM Inizio", dati['km_p']],
-            ["KM Fine", dati['km_a']],
+            ["Autista", dati['autista']], ["Targa", dati['targa']],
+            ["Da", dati['partenza']], ["A", dati['destinazione']],
+            ["Inizio", dati['data_p']], ["Fine", dati['data_a']],
+            ["KM Inizio", dati['km_p']], ["KM Fine", dati['km_a']],
             ["KM TOTALI", str(tot_km)]
         ], style=TableStyle([
             ('GRID', (0,0), (-1,-1), 1, colors.black),
@@ -96,7 +89,6 @@ def index():
                 "km_p": request.form.get("km_partenza"),
                 "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
-            
         elif azione == "stop" and "corsa" in session:
             c = session.pop("corsa")
             c.update({
@@ -105,29 +97,22 @@ def index():
                 "data_a": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             
-            # 1. Scrittura su Excel
+            # 1. Excel
             try:
                 info = json.loads(CREDS_JSON)
                 creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
                 service = build('sheets', 'v4', credentials=creds)
-                values = [[
-                    c['data_p'], c['data_a'], c['autista'], c['targa'],
-                    c['partenza'], c['destinazione'], c['km_p'], c['km_a']
-                ]]
-                service.spreadsheets().values().append(
-                    spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H",
-                    valueInputOption="RAW", body={'values': values}
-                ).execute()
+                values = [[c['data_p'], c['data_a'], c['autista'], c['targa'], c['partenza'], c['destinazione'], c['km_p'], c['km_a']]]
+                service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:H", valueInputOption="RAW", body={'values': values}).execute()
                 print("✅ Excel aggiornato")
             except Exception as e:
                 print(f"❌ Errore Excel: {e}")
 
-            # 2. Generazione PDF e Invio via Email
+            # 2. Email (PDF generato e inviato)
             pdf_buffer = genera_pdf_buffer(c)
             invia_email_con_pdf(c, pdf_buffer)
                 
         return redirect("/")
-    
     return render_template("form.html", corsa=session.get("corsa"), corsa_in_corso=("corsa" in session))
 
 if __name__ == "__main__":
