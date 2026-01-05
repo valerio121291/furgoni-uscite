@@ -6,19 +6,26 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from upstash_redis import Redis
 from email.message import EmailMessage
+# Librerie Google
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026_top_secret")
+app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
 PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
-EMAIL_PASSWORD = "ogteueppdqmtpcvg"  # Password corretta senza spazi
+EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 
+# Inserisci qui l'ID del tuo foglio (si trova nell'URL del foglio Google)
+SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE'
+
+# Connessione Redis
 try:
     kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
-except Exception as e:
+except:
     kv = None
 
 STATO_INIZIALE = {
@@ -27,18 +34,35 @@ STATO_INIZIALE = {
     "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
 }
 
+# --- FUNZIONI GOOGLE SHEETS ---
+def get_google_service():
+    # Legge il JSON dalla variabile d'ambiente GOOGLE_CREDENTIALS su Vercel
+    info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+    creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+    return build('sheets', 'v4', credentials=creds)
+
+def scrivi_su_sheets(riga):
+    try:
+        service = get_google_service()
+        service.spreadsheets().values().append(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Foglio1!A:G",
+            valueInputOption="USER_ENTERED",
+            body={"values": [riga]}
+        ).execute()
+    except Exception as e:
+        print(f"Errore Google Sheets: {e}")
+
+# --- GESTIONE STATO ---
 def carica_stato():
     if kv is None: return STATO_INIZIALE
     try:
         stato = kv.get("stato_furgoni")
-        if stato: return stato if isinstance(stato, dict) else json.loads(stato)
-    except: pass
-    return STATO_INIZIALE
+        return stato if isinstance(stato, dict) else json.loads(stato)
+    except: return STATO_INIZIALE
 
 def salva_stato(stato):
-    if kv:
-        try: kv.set("stato_furgoni", json.dumps(stato))
-        except: pass
+    if kv: kv.set("stato_furgoni", json.dumps(stato))
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -77,45 +101,40 @@ def index():
             km_r = request.form.get("km_rientro")
             data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
             
-            # 1. Generazione PDF (Percorso temporaneo per Vercel)
+            # 1. SCRITTURA SU GOOGLE SHEETS
+            riga_dati = [c['data_p'], data_r, c['autista'], targa, c['km_p'], c.get('km_d', '-'), km_r]
+            scrivi_su_sheets(riga_dati)
+
+            # 2. GENERAZIONE PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
-            p.setFont("Helvetica-Bold", 18)
-            p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            
-            def draw_block(titolo, info, km, data, y_pos, color_bg):
-                p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
-                p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
-                p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
-                return y_pos - 80
+            p.setFont("Helvetica-Bold", 16)
+            p.drawString(100, 800, "LOGISTICA CSA - REPORT VIAGGIO")
+            p.setFont("Helvetica", 12)
+            p.drawString(100, 770, f"Autista: {c['autista']}")
+            p.drawString(100, 750, f"Mezzo: {targa}")
+            p.drawString(100, 730, f"KM Partenza: {c['km_p']} | KM Rientro: {km_r}")
+            p.showPage()
+            p.save()
 
-            y = 720
-            y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
-            y = draw_block("2. ARRIVO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
-            p.showPage(); p.save()
-
-            # 2. Invio Email Automatico
+            # 3. INVIO EMAIL
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
+                msg['Subject'] = f"Fine Missione: {c['autista']} - {targa}"
                 msg['From'] = EMAIL_MITTENTE
                 msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione completata.\nAutista: {c['autista']}\nTarga: {targa}\nKM Finali: {km_r}")
+                msg.set_content(f"Report completato per {targa}.\nChilometri totali registrati.")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                     smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
                     smtp.send_message(msg)
-            except Exception as e:
-                print(f"Errore invio email: {e}")
+            except: pass
 
-            # 3. Reset Stato
+            # Reset furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
-            
-            # Invia il file per il download immediato all'utente
             return send_file(pdf_path, as_attachment=True, download_name=f"Report_{targa}.pdf")
 
         elif azione == "annulla":
@@ -129,23 +148,21 @@ def index():
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
     try:
-        data = request.json
-        testo = data.get("testo", "")
+        testo = request.json.get("testo", "")
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
             "messages": [
-                {"role": "system", "content": "Sei un estrattore dati logistica. Mappe: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'->GG862HC. Rispondi solo JSON."},
-                {"role": "user", "content": f"Estrai targa, autista, km da: {testo}"}
+                {"role": "system", "content": "Estrai targa, autista, km in JSON. Mappe: piccolo->GA087CH, medio->GX942TS, grande->GG862HC."},
+                {"role": "user", "content": testo}
             ],
             "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
-        return jsonify(json.loads(match.group())) if match else jsonify({"error": "Dati non trovati"}), 500
+        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
-       
+    app.run(debug=True)
