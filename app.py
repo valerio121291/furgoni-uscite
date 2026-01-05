@@ -4,7 +4,12 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from vercel_kv import kv  # Importa il database KV dal Marketplace
+
+# Import sicuro per Vercel KV / Upstash
+try:
+    from vercel_kv import kv
+except ImportError:
+    kv = None
 
 # Librerie per Google Sheets
 from google.oauth2.service_account import Credentials
@@ -13,31 +18,34 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 app.secret_key = "logistica_csa_valerio_2026_top"
 
-# --- CONFIGURAZIONE IA ---
+# --- CONFIGURAZIONE ---
 PPLX_API_KEY = "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"
 
-# --- GESTIONE STATO CON VERCEL KV ---
+# Stato iniziale di emergenza
+STATO_INIZIALE = {
+    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
+}
+
+# --- GESTIONE DATABASE KV ---
 def carica_stato():
+    if kv is None:
+        return STATO_INIZIALE
     try:
-        # Legge lo stato dal database KV
         stato = kv.get("stato_furgoni")
         if stato:
-            return stato
+            return json.loads(stato) if isinstance(stato, str) else stato
     except Exception as e:
         print(f"Errore lettura KV: {e}")
-    
-    # Stato iniziale se il database è vuoto o c'è un errore
-    return {
-        "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-        "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-        "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
-    }
+    return STATO_INIZIALE
 
 def salva_stato(stato):
-    try:
-        kv.set("stato_furgoni", stato)
-    except Exception as e:
-        print(f"Errore scrittura KV: {e}")
+    if kv:
+        try:
+            kv.set("stato_furgoni", json.dumps(stato))
+        except Exception as e:
+            print(f"Errore scrittura KV: {e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -75,7 +83,7 @@ def index():
             km_r = request.form.get("km_rientro")
             data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-            # INVIO A GOOGLE SHEETS
+            # 1. INVIO A GOOGLE SHEETS
             try:
                 creds_json = os.getenv("GOOGLE_CREDENTIALS")
                 spreadsheet_id = os.getenv("SPREADSHEET_ID")
@@ -88,7 +96,7 @@ def index():
             except Exception as e:
                 print(f"Errore Excel: {e}")
 
-            # CREAZIONE PDF
+            # 2. CREAZIONE PDF
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
@@ -116,6 +124,7 @@ def index():
             p.save()
             buffer.seek(0)
 
+            # 3. RESET STATO FURGONE
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -135,12 +144,12 @@ def elabora_voce():
     try:
         data = request.json
         testo_vocale = data.get("testo", "")
-        prompt = f"Analizza: '{testo_vocale}'. Rispondi SOLO in JSON: {{\"targa\": \"GA087CH\" se piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso, \"autista\": \"Nome\", \"km\": numero, \"luogo\": \"Posto\"}}"
+        prompt = f"Analizza: '{testo_vocale}'. Rispondi SOLO in JSON: {{\"targa\": \"GA087CH\" se dici piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso, \"autista\": \"Nome\", \"km\": numero, \"luogo\": \"Posto\"}}"
         
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
-            "messages": [{"role": "system", "content": "Rispondi solo in JSON."}, {"role": "user", "content": prompt}],
+            "messages": [{"role": "system", "content": "Rispondi solo in JSON senza testo aggiuntivo."}, {"role": "user", "content": prompt}],
             "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
