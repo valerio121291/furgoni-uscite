@@ -4,6 +4,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from vercel_kv import kv  # Importa il database KV dal Marketplace
 
 # Librerie per Google Sheets
 from google.oauth2.service_account import Credentials
@@ -15,23 +16,28 @@ app.secret_key = "logistica_csa_valerio_2026_top"
 # --- CONFIGURAZIONE IA ---
 PPLX_API_KEY = "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"
 
-# --- GESTIONE STATO (ADATTATA PER VERCEL) ---
-# Usiamo una variabile globale perché Vercel non permette la scrittura su file .json
-furgoni_memoria = {
-    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
-}
-
+# --- GESTIONE STATO CON VERCEL KV ---
 def carica_stato():
-    # Restituisce la memoria attuale
-    global furgoni_memoria
-    return furgoni_memoria
+    try:
+        # Legge lo stato dal database KV
+        stato = kv.get("stato_furgoni")
+        if stato:
+            return stato
+    except Exception as e:
+        print(f"Errore lettura KV: {e}")
+    
+    # Stato iniziale se il database è vuoto o c'è un errore
+    return {
+        "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+        "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+        "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
+    }
 
 def salva_stato(stato):
-    # Aggiorna la memoria globale
-    global furgoni_memoria
-    furgoni_memoria = stato
+    try:
+        kv.set("stato_furgoni", stato)
+    except Exception as e:
+        print(f"Errore scrittura KV: {e}")
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -45,13 +51,11 @@ def index():
 
         if azione == "start":
             furgoni[targa] = {
-                "targa": targa,
-                "stato": "In Viaggio",
+                "targa": targa, "stato": "In Viaggio",
                 "posizione": request.form.get("partenza"),
                 "km_p": request.form.get("km_partenza"),
                 "autista": request.form.get("autista"),
-                "step": 1,
-                "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
@@ -61,8 +65,7 @@ def index():
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
                 "km_d": request.form.get("km_destinazione"),
-                "step": 2,
-                "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 2, "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
             salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -90,8 +93,6 @@ def index():
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
             p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            p.setFont("Helvetica", 12)
-            p.drawCentredString(300, 780, f"Furgone: {targa} | Autista: {c['autista']}")
             
             y = 720
             def draw_block(titolo, info, km, data, y_pos, color_bg):
@@ -122,15 +123,13 @@ def index():
 
         elif azione == "annulla":
             if targa:
-                furgoni[targa]["stato"] = "Libero"
-                furgoni[targa]["step"] = 0
+                furgoni[targa].update({"stato": "Libero", "step": 0})
                 salva_stato(furgoni)
             session.pop("targa_in_uso", None)
             return redirect(url_for('index'))
 
     return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
 
-# --- NUOVA ROTTA PER IL COMANDO VOCALE ---
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
     try:
