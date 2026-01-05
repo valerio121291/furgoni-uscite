@@ -2,104 +2,119 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Test IA Logistica</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistica Vocale IA</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
-        .box { max-width: 400px; margin: auto; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
-        .mic-btn { background: #38bdf8; color: #0f172a; padding: 20px; width: 100%; border: none; border-radius: 15px; cursor: pointer; font-weight: bold; font-size: 1.1rem; }
-        .recording { background: #ef4444; animation: pulse 1s infinite; }
-        #status { margin-top: 15px; color: #94a3b8; font-size: 0.9rem; min-height: 40px; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; padding: 20px; display: flex; justify-content: center; }
+        .box { width: 100%; max-width: 400px; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h2 { text-align: center; color: #38bdf8; margin-bottom: 20px; }
+        label { display: block; margin-top: 15px; color: #94a3b8; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
+        input:focus, select:focus { border-color: #38bdf8; outline: none; }
+        .mic-btn { background: #38bdf8; color: #0f172a; padding: 18px; width: 100%; border: none; border-radius: 15px; cursor: pointer; font-weight: 900; font-size: 1.1rem; margin-top: 25px; text-transform: uppercase; transition: 0.3s; }
+        .mic-btn.recording { background: #ef4444; animation: pulse 1.5s infinite; }
+        #status { margin-top: 15px; color: #38bdf8; font-size: 0.9rem; text-align: center; min-height: 40px; font-style: italic; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="box">
-    <h2>Logistica Vocale</h2>
+    <h2>LOGISTICA IA</h2>
     
     <label>Furgone</label>
     <select id="targa_select">
-        <option value="">- Seleziona -</option>
+        <option value="">- Seleziona Veicolo -</option>
         <option value="GA087CH">Piccolo (GA087CH)</option>
         <option value="GX942TS">Medio (GX942TS)</option>
         <option value="GG862HC">Grande (GG862HC)</option>
     </select>
 
     <label>Autista</label>
-    <input type="text" id="autista_input" placeholder="Chi guida?">
+    <input type="text" id="autista_input" placeholder="Nome dell'autista">
 
-    <label>KM</label>
-    <input type="number" id="km_input" placeholder="Kilometri attuali">
+    <label>Chilometri</label>
+    <input type="number" id="km_input" placeholder="Esempio: 15000">
 
-    <label>Partenza</label>
-    <input type="text" id="partenza_input" placeholder="Città di partenza">
+    <label>Partenza da</label>
+    <input type="text" id="partenza_input" placeholder="Località di partenza">
 
-    <button class="mic-btn" id="mic-btn">PREMI E PARLA</button>
-    <div id="status">In attesa...</div>
+    <button class="mic-btn" id="micBtn">🎙️ Tocca e Parla</button>
+    <div id="status">Pronto per l'ascolto...</div>
 </div>
 
 <script>
-    const micBtn = document.getElementById('mic-btn');
+    const micBtn = document.getElementById('micBtn');
     const status = document.getElementById('status');
 
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        recognition.interimResults = false;
+        recognition.interimResults = true; // Ti permette di vedere cosa capisce mentre parli
 
         micBtn.onclick = () => {
             recognition.start();
             micBtn.classList.add('recording');
-            status.innerText = "Ti ascolto...";
+            status.innerText = "Ti sto ascoltando...";
         };
 
         recognition.onresult = (event) => {
-            const testo = event.results[0][0].transcript;
-            micBtn.classList.remove('recording');
-            status.innerText = "Analisi: " + testo;
+            let transcript = event.results[0][0].transcript;
+            status.innerText = "Capito: " + transcript;
 
-            fetch('/elabora_voce', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({testo: testo})
-            })
-            .then(res => res.json())
-            .then(data => {
-                console.log("DATI IA:", data); // Fondamentale per il debug
+            if (event.results[0].isFinal) {
+                micBtn.classList.remove('recording');
+                status.innerText = "Analisi dati con Perplexity...";
 
-                // COMPILAZIONE SICURA
-                if(data.targa) {
-                    const select = document.getElementById('targa_select');
-                    select.value = data.targa;
-                    console.log("Impostata Targa:", data.targa);
-                }
-                
-                if(data.autista) {
-                    document.getElementById('autista_input').value = data.autista;
-                    console.log("Impostato Autista:", data.autista);
-                }
-                
-                if(data.km) {
-                    document.getElementById('km_input').value = data.km;
-                    console.log("Impostati KM:", data.km);
-                }
+                fetch('/elabora_voce', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({testo: transcript})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    console.log("Dati ricevuti:", data);
 
-                if(data.partenza) {
-                    document.getElementById('partenza_input').value = data.partenza;
-                    console.log("Impostata Partenza:", data.partenza);
-                }
+                    // 1. Compilazione Targa
+                    if (data.targa) {
+                        document.getElementById('targa_select').value = data.targa;
+                    }
 
-                status.innerText = "✅ DATI INSERITI!";
-            })
-            .catch(err => {
-                status.innerText = "❌ Errore connessione";
-                console.error(err);
-            });
+                    // 2. Compilazione Autista
+                    if (data.autista) {
+                        document.getElementById('autista_input').value = data.autista;
+                    }
+
+                    // 3. Compilazione KM (pulizia da testo e simboli)
+                    if (data.km) {
+                        const soloNumeri = data.km.toString().replace(/\D/g, "");
+                        document.getElementById('km_input').value = soloNumeri;
+                    }
+
+                    // 4. Compilazione Partenza
+                    if (data.partenza) {
+                        document.getElementById('partenza_input').value = data.partenza;
+                    }
+
+                    status.innerText = "✅ Campi compilati correttamente!";
+                })
+                .catch(err => {
+                    status.innerText = "❌ Errore di comunicazione con il server.";
+                    console.error("Errore Fetch:", err);
+                    micBtn.classList.remove('recording');
+                });
+            }
         };
+
+        recognition.onerror = (event) => {
+            micBtn.classList.remove('recording');
+            status.innerText = "Errore microfono: " + event.error;
+        };
+
     } else {
-        status.innerText = "Usa Chrome per parlare.";
+        status.innerText = "Browser non supportato. Usa Chrome o Safari.";
     }
 </script>
+
 </body>
 </html>
