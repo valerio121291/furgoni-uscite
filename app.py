@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
-# Libreria ufficiale Upstash per Python
+# Importiamo la libreria corretta per Upstash
 from upstash_redis import Redis
 
 # Librerie per Google Sheets
@@ -15,12 +15,12 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 app.secret_key = "logistica_csa_valerio_2026_top"
 
-# --- CONFIGURAZIONE IA ---
+# --- CONFIGURAZIONE ---
 PPLX_API_KEY = "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"
 
 # Inizializzazione Database Upstash Redis
 try:
-    # Vercel inietta automaticamente queste variabili se hai connesso Upstash dal Marketplace
+    # Vercel inietta queste variabili quando connetti Upstash dal Marketplace
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
     if url and token:
@@ -42,9 +42,9 @@ def carica_stato():
     if kv is None:
         return STATO_INIZIALE
     try:
+        # La libreria upstash-redis gestisce automaticamente il JSON
         stato = kv.get("stato_furgoni")
         if stato:
-            # upstash-redis gestisce automaticamente la conversione se salvato come dict
             return stato if isinstance(stato, dict) else json.loads(stato)
     except Exception as e:
         print(f"Errore lettura KV: {e}")
@@ -53,12 +53,12 @@ def carica_stato():
 def salva_stato(stato):
     if kv:
         try:
-            # Salviamo lo stato come stringa JSON per sicurezza
+            # Salviamo lo stato convertendolo in stringa JSON
             kv.set("stato_furgoni", json.dumps(stato))
         except Exception as e:
             print(f"Errore scrittura KV: {e}")
 
-# --- ROTTE APPLICAZIONE ---
+# --- ROTTE ---
 @app.route("/", methods=["GET", "POST"])
 def index():
     furgoni = carica_stato()
