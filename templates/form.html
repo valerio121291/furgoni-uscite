@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logistica CSA - Controllo Vocale</title>
+    <title>Logistica CSA</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; padding: 20px; }
+        body { font-family: sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; padding: 20px; }
         .box { width: 100%; max-width: 400px; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h2 { text-align: center; color: #38bdf8; margin-bottom: 20px; }
-        label { display: block; margin-top: 15px; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
-        input { width: 100%; padding: 12px; margin-top: 5px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
-        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; margin-top: 20px; font-size: 1rem; transition: transform 0.2s; }
-        .btn:active { transform: scale(0.98); }
+        h2 { text-align: center; color: #38bdf8; }
+        label { display: block; margin-top: 15px; color: #94a3b8; font-size: 0.8rem; font-weight: bold; }
+        input { width: 100%; padding: 12px; margin-top: 5px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; margin-top: 20px; }
         #micBtn { background: #38bdf8; color: #0f172a; }
         #sendBtn { background: #22c55e; color: white; }
-        #sendBtn:disabled { background: #475569; cursor: not-allowed; }
-        .recording { background: #ef4444 !important; animation: pulse 1s infinite; color: white !important; }
-        #status { margin-top: 15px; text-align: center; color: #38bdf8; font-size: 0.9rem; min-height: 20px; font-style: italic; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .recording { background: #ef4444 !important; animation: pulse 1s infinite; }
+        #status { margin-top: 15px; text-align: center; color: #38bdf8; font-size: 0.9rem; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -29,18 +27,18 @@
     <input type="text" id="targa_field" placeholder="Es: GA087CH">
 
     <label>Nome Autista</label>
-    <input type="text" id="autista_field" placeholder="Chi guida?">
+    <input type="text" id="autista_field" placeholder="Nome">
 
     <label>Chilometri</label>
-    <input type="number" id="km_field" placeholder="KM attuali">
+    <input type="number" id="km_field" placeholder="KM">
 
     <label>Partenza</label>
     <input type="text" id="partenza_field" value="Tiburtina">
 
     <button id="micBtn" class="btn">🎙️ TOCCA E PARLA</button>
-    <button id="sendBtn" class="btn">📩 GENERA E INVIA PDF</button>
+    <button id="sendBtn" class="btn">📩 INVIA REPORT PDF</button>
     
-    <div id="status">In attesa di comando...</div>
+    <div id="status">Pronto...</div>
 </div>
 
 <script>
@@ -48,80 +46,61 @@
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
 
-    // Mappe Locali per risposta istantanea
-    const furgoni = { "piccolo": "GA087CH", "medio": "GX942TS", "grande": "GG862HC", "grosso": "GG862HC" };
+    // LISTA AUTISTI E TARGHE
+    const autisti = ["Valerio", "Daniele", "Stefano", "Simone", "Costantino"];
+    const furgoni = { "piccolo": "GA087CH", "medio": "GX942TS", "grande": "GG862HC" };
 
     if ('webkitSpeechRecognition' in window) {
         const rec = new webkitSpeechRecognition();
         rec.lang = 'it-IT';
-        rec.continuous = false;
 
-        micBtn.onclick = () => { 
-            rec.start(); 
-            micBtn.classList.add('recording');
-            status.innerText = "Ti ascolto...";
-        };
+        micBtn.onclick = () => { rec.start(); micBtn.classList.add('recording'); };
 
         rec.onresult = (event) => {
             micBtn.classList.remove('recording');
             let testo = event.results[0][0].transcript.toLowerCase();
             status.innerText = "Hai detto: " + testo;
 
-            // 1. Analisi Locale (Velocissima)
-            for (let k in furgoni) { if (testo.includes(k)) document.getElementById('targa_field').value = furgoni[k]; }
-            const numeri = testo.match(/\d+/g);
-            if (numeri) document.getElementById('km_field').value = numeri[0];
+            // 1. Riconoscimento Locale Autista
+            autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_field').value = a; });
+            
+            // 2. Riconoscimento Locale Targa
+            for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_field').value = furgoni[k]; }
+            
+            // 3. Riconoscimento KM
+            const kmMatch = testo.match(/\d+/g);
+            if(kmMatch) document.getElementById('km_field').value = kmMatch[0];
 
-            // 2. Analisi IA (Perfezionamento)
+            // 4. Rifinitura con IA
             fetch('/elabora_voce', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({testo: testo})
-            })
-            .then(r => r.json())
-            .then(data => {
+            }).then(r => r.json()).then(data => {
                 if(data.targa) document.getElementById('targa_field').value = data.targa;
-                if(data.autista) document.getElementById('autista_field').value = data.autista;
-                if(data.km) document.getElementById('km_field').value = data.km.toString().replace(/\D/g, "");
-                status.innerText = "✅ Dati elaborati con successo";
-            })
-            .catch(() => status.innerText = "⚠️ Errore IA, controlla i campi manualmente");
-        };
-
-        rec.onerror = () => {
-            micBtn.classList.remove('recording');
-            status.innerText = "❌ Errore microfono";
+                if(data.autista && !document.getElementById('autista_field').value) 
+                    document.getElementById('autista_field').value = data.autista;
+            });
         };
     }
 
     sendBtn.onclick = () => {
-        sendBtn.disabled = true;
-        status.innerText = "⏳ Generazione PDF e invio in corso...";
-
-        const payload = {
+        const dati = {
             targa: document.getElementById('targa_field').value,
             autista: document.getElementById('autista_field').value,
             km: document.getElementById('km_field').value,
             partenza: document.getElementById('partenza_field').value,
             data_ora: new Date().toLocaleString('it-IT')
         };
-
+        status.innerText = "⏳ Invio email...";
         fetch('/genera_e_invia', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
+            body: JSON.stringify(dati)
         })
         .then(r => r.json())
-        .then(res => {
-            alert(res.message);
-            status.innerText = "📧 Report inviato correttamente!";
-            sendBtn.disabled = false;
-        })
-        .catch(err => {
-            alert("Errore durante l'invio");
-            status.innerText = "❌ Invio fallito";
-            sendBtn.disabled = false;
-        });
+        .then(res => { alert(res.message); status.innerText = "📧 Inviato!"; })
+        .catch(() => alert("Errore invio"));
     };
 </script>
 </body>
