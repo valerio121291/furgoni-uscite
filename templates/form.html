@@ -1,115 +1,62 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Logistica CSA - Dark Mode</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <title>Test IA Logistica</title>
     <style>
-        :root { --bg-dark: #0f172a; --card-dark: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; --text-main: #f8fafc; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-dark); margin: 0; padding-bottom: 120px; color: var(--text-main); }
-        .header { background: #000; color: var(--accent); padding: 25px; text-align: center; font-weight: 800; border-bottom: 2px solid var(--accent); text-transform: uppercase; }
-        .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
-        .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; }
-        .truck-card.In.Viaggio { border: 2px solid var(--warning); }
-        .truck-card.Libero { border: 2px solid var(--success); }
-        .furgone-icon { font-size: 1.2rem; display: block; margin-bottom: 5px; }
-        .main-container { padding: 0 15px; }
-        .card { background: var(--card-dark); padding: 25px; border-radius: 24px; border: 1px solid #334155; }
-        label { display: block; margin-top: 15px; font-weight: 600; font-size: 0.85rem; color: var(--accent); }
-        select, input { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; }
-        .btn { width: 100%; padding: 20px; margin-top: 25px; border-radius: 15px; border: none; font-weight: 800; cursor: pointer; text-transform: uppercase; }
-        .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
-        .btn-gps { background: #334155; color: var(--accent); font-size: 0.7rem; border: 1px dashed var(--accent); margin-top: 10px; }
-        .voice-section { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; width: 100%; }
-        .mic-btn { width: 70px; height: 70px; border-radius: 50%; background: var(--accent); border: 5px solid var(--bg-dark); font-size: 25px; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; }
-        .mic-btn.recording { background: #ef4444; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        #voice-msg { font-size: 0.7rem; color: var(--accent); margin-top: 5px; font-weight: bold; }
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+        .test-box { max-width: 400px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+        .mic-btn { background: #38bdf8; border: none; padding: 15px; width: 100%; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
+        .mic-btn.recording { background: #ef4444; }
+        #status { font-size: 0.8rem; color: #666; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <div class="header">LOGISTICA CSA</div>
 
-    <div class="status-container">
-        {% for t, info in furgoni.items() %}
-        <div class="truck-card {{ info.stato }}">
-            <span class="furgone-icon">
-                {% if t == "GA087CH" %}🚚{% elif t == "GX942TS" %}🚚🚚{% else %}🚚🚚🚚{% endif %}
-            </span>
-            <strong>{{ t }}</strong>
-            <span>{{ info.stato }}</span>
-        </div>
-        {% endfor %}
-    </div>
+<div class="test-box">
+    <h3>Test Comando Vocale</h3>
+    
+    <label>Furgone</label>
+    <select id="targa_select">
+        <option value="">- Seleziona -</option>
+        <option value="GA087CH">Piccolo (GA087CH)</option>
+        <option value="GX942TS">Medio (GX942TS)</option>
+        <option value="GG862HC">Grosso (GG862HC)</option>
+    </select>
 
-    <div class="main-container">
-        <div class="card">
-            <form method="post" id="form-logistica">
-                {% if not targa_attiva %}
-                    <label>Seleziona Furgone</label>
-                    <select name="targa" id="targa_select">
-                        <option value="GA087CH">🚚 Piccolo (GA087CH)</option>
-                        <option value="GX942TS">🚚🚚 Medio (GX942TS)</option>
-                        <option value="GG862HC">🚚🚚🚚 Grosso (GG862HC)</option>
-                    </select>
+    <label>Autista</label>
+    <input type="text" id="autista_input" placeholder="Nome autista">
 
-                    <label>Autista</label>
-                    <select name="autista" id="autista_select">
-                        <option value="Valerio">Valerio</option>
-                        <option value="Daniele">Daniele</option>
-                        <option value="Costantino">Costantino</option>
-                        <option value="Simone">Simone</option>
-                        <option value="Stefano">Stefano</option>
-                    </select>
+    <label>KM</label>
+    <input type="number" id="km_input" placeholder="KM attuali">
 
-                    <label>Partenza</label>
-                    <select name="partenza" id="partenza"><option value="Tiburtina">Tiburtina</option></select>
-                    <button type="button" class="btn btn-gps" onclick="rilevaPosizione('partenza')">📍 GPS POSIZIONE</button>
+    <label>Partenza</label>
+    <input type="text" id="partenza_input" placeholder="Località partenza">
 
-                    <label>KM Iniziali</label>
-                    <input type="number" name="km_partenza" id="km_input" placeholder="Esegui lettura cruscotto" required>
-                    <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
-                {% else %}
-                    <div style="text-align: center; padding: 20px;">
-                        <h3 style="color:var(--warning)">{{ targa_attiva }} IN VIAGGIO</h3>
-                        <p>Autista: {{ corsa_attiva.autista }}</p>
-                    </div>
-                    <input type="hidden" name="targa" value="{{ targa_attiva }}">
-                    {% if corsa_attiva.step == 1 %}
-                        <label>Destinazione</label>
-                        <select name="destinazione" id="destinazione"><option value="Sede">Sede</option></select>
-                        <input type="number" name="km_destinazione" placeholder="KM Arrivo" required>
-                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
-                    {% else %}
-                        <input type="number" name="km_rientro" placeholder="KM Finali" required>
-                        <button type="submit" name="azione" value="stop" class="btn btn-start" style="background:var(--success)">Chiudi Viaggio</button>
-                    {% endif %}
-                    <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:gray; width:100%; margin-top:20px;">Annulla</button>
-                {% endif %}
-            </form>
-        </div>
-    </div>
+    <hr>
+    <button class="mic-btn" id="mic-btn">PREMI E PARLA</button>
+    <div id="status">In attesa...</div>
+</div>
 
-    <div class="voice-section">
-        <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
-        <div id="voice-msg">TOCCA E PARLA</div>
-    </div>
-
-    <script>
+<script>
     const micBtn = document.getElementById('mic-btn');
-    const voiceMsg = document.getElementById('voice-msg');
+    const status = document.getElementById('status');
 
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        
-        micBtn.onclick = () => { recognition.start(); micBtn.classList.add('recording'); voiceMsg.innerText = "Ti ascolto..."; };
+
+        micBtn.onclick = () => {
+            recognition.start();
+            micBtn.classList.add('recording');
+            status.innerText = "Ti sto ascoltando...";
+        };
 
         recognition.onresult = (event) => {
             const testo = event.results[0][0].transcript;
             micBtn.classList.remove('recording');
-            voiceMsg.innerText = "Analisi voce...";
+            status.innerText = "Analisi: " + testo;
 
             fetch('/elabora_voce', {
                 method: 'POST',
@@ -118,24 +65,26 @@
             })
             .then(res => res.json())
             .then(data => {
-                if(data.targa) {
-                    document.getElementById('targa_select').value = data.targa;
-                    document.getElementById('autista_select').value = data.autista || 'Valerio';
-                    document.getElementById('km_input').value = data.km || '';
-                    voiceMsg.innerText = "COMPILATO!";
-                } else { voiceMsg.innerText = "NON HO CAPITO"; }
+                if(data.targa) document.getElementById('targa_select').value = data.targa;
+                if(data.autista) document.getElementById('autista_input').value = data.autista;
+                if(data.km) document.getElementById('km_input').value = data.km;
+                if(data.partenza) document.getElementById('partenza_input').value = data.partenza;
+                status.innerText = "Dati inseriti!";
             })
-            .catch(() => { voiceMsg.innerText = "ERRORE CONNESSIONE"; micBtn.classList.remove('recording'); });
+            .catch(err => {
+                status.innerText = "Errore durante l'analisi.";
+                console.error(err);
+            });
         };
-    }
 
-    function rilevaPosizione(id) {
-        navigator.geolocation.getCurrentPosition(pos => {
-            const val = `Lat: ${pos.coords.latitude.toFixed(3)}, Lon: ${pos.coords.longitude.toFixed(3)}`;
-            const opt = new Option(val, val, true, true);
-            document.getElementById(id).add(opt);
-        });
+        recognition.onerror = () => {
+            micBtn.classList.remove('recording');
+            status.innerText = "Errore microfono.";
+        };
+    } else {
+        status.innerText = "Browser non supportato (usa Chrome).";
     }
-    </script>
+</script>
+
 </body>
 </html>
