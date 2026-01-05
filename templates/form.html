@@ -2,20 +2,23 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Test IA Logistica</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
-        .test-box { max-width: 400px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        input, select { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-        .mic-btn { background: #38bdf8; border: none; padding: 15px; width: 100%; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
-        .mic-btn.recording { background: #ef4444; }
-        #status { font-size: 0.8rem; color: #666; text-align: center; margin-top: 10px; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #0f172a; color: white; }
+        .test-box { max-width: 400px; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin: auto; }
+        label { display: block; margin-top: 15px; color: #38bdf8; font-size: 0.8rem; font-weight: bold; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #334155; border-radius: 10px; background: #0f172a; color: white; box-sizing: border-box; }
+        .mic-btn { background: #38bdf8; border: none; padding: 20px; width: 100%; border-radius: 15px; cursor: pointer; color: #0f172a; font-weight: 900; margin-top: 20px; text-transform: uppercase; transition: 0.3s; }
+        .mic-btn.recording { background: #ef4444; animation: pulse 1.5s infinite; }
+        #status { font-size: 0.75rem; color: #94a3b8; text-align: center; margin-top: 15px; min-height: 1.2em; font-style: italic; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="test-box">
-    <h3>Test Comando Vocale</h3>
+    <h2 style="text-align: center; margin-top: 0;">Logistica IA</h2>
     
     <label>Furgone</label>
     <select id="targa_select">
@@ -26,17 +29,16 @@
     </select>
 
     <label>Autista</label>
-    <input type="text" id="autista_input" placeholder="Nome autista">
+    <input type="text" id="autista_input" placeholder="In attesa di voce...">
 
     <label>KM</label>
-    <input type="number" id="km_input" placeholder="KM attuali">
+    <input type="number" id="km_input" placeholder="00000">
 
     <label>Partenza</label>
-    <input type="text" id="partenza_input" placeholder="Località partenza">
+    <input type="text" id="partenza_input" placeholder="Località">
 
-    <hr>
-    <button class="mic-btn" id="mic-btn">PREMI E PARLA</button>
-    <div id="status">In attesa...</div>
+    <button class="mic-btn" id="mic-btn">Tocca e Parla</button>
+    <div id="status">Pronto all'ascolto</div>
 </div>
 
 <script>
@@ -46,41 +48,67 @@
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
+        recognition.continuous = false;
+        recognition.interimResults = true; // Permette di vedere il testo mentre parli
 
         micBtn.onclick = () => {
             recognition.start();
             micBtn.classList.add('recording');
-            status.innerText = "Ti sto ascoltando...";
+            status.innerText = "Ti ascolto...";
         };
 
         recognition.onresult = (event) => {
-            const testo = event.results[0][0].transcript;
-            micBtn.classList.remove('recording');
-            status.innerText = "Analisi: " + testo;
+            let interimTranscript = '';
+            let finalTranscript = '';
 
-            fetch('/elabora_voce', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({testo: testo})
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.targa) document.getElementById('targa_select').value = data.targa;
-                if(data.autista) document.getElementById('autista_input').value = data.autista;
-                if(data.km) document.getElementById('km_input').value = data.km;
-                if(data.partenza) document.getElementById('partenza_input').value = data.partenza;
-                status.innerText = "Dati inseriti!";
-            })
-            .catch(err => {
-                status.innerText = "Errore durante l'analisi.";
-                console.error(err);
-            });
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            // Mostra il testo provvisorio mentre parli per non farlo "sparire"
+            status.innerText = interimTranscript || finalTranscript;
+
+            if (finalTranscript) {
+                micBtn.classList.remove('recording');
+                status.innerText = "Analisi in corso: " + finalTranscript;
+
+                fetch('/elabora_voce', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({testo: finalTranscript})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    console.log("Dati ricevuti dall'IA:", data);
+                    
+                    // Riempimento campi con controllo nomi
+                    if(data.targa) document.getElementById('targa_select').value = data.targa;
+                    if(data.autista) document.getElementById('autista_input').value = data.autista;
+                    if(data.km) document.getElementById('km_input').value = data.km;
+                    if(data.partenza) document.getElementById('partenza_input').value = data.partenza;
+                    
+                    status.innerText = "✅ Dati inseriti correttamente!";
+                })
+                .catch(err => {
+                    status.innerText = "❌ Errore di connessione.";
+                    console.error(err);
+                });
+            }
         };
 
-        recognition.onerror = () => {
+        recognition.onerror = (event) => {
             micBtn.classList.remove('recording');
-            status.innerText = "Errore microfono.";
+            status.innerText = "Errore: " + event.error;
         };
+
+        recognition.onend = () => {
+            micBtn.classList.remove('recording');
+        };
+
     } else {
         status.innerText = "Browser non supportato (usa Chrome).";
     }
