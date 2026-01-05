@@ -1,5 +1,5 @@
-import os, json, io
-from flask import Flask, render_template, request, session, send_file, redirect, url_for
+import os, json, io, requests
+from flask import Flask, render_template, request, session, send_file, redirect, url_for, jsonify
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -12,24 +12,26 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 app.secret_key = "logistica_csa_valerio_2026_top"
 
-# File per la memoria permanente dello stato dei furgoni
-DB_FILE = "stato_furgoni.json"
+# --- CONFIGURAZIONE IA ---
+PPLX_API_KEY = "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"
+
+# --- GESTIONE STATO (ADATTATA PER VERCEL) ---
+# Usiamo una variabile globale perché Vercel non permette la scrittura su file .json
+furgoni_memoria = {
+    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
+    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
+}
 
 def carica_stato():
-    if not os.path.exists(DB_FILE):
-        iniziale = {
-            "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-            "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-            "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
-        }
-        salva_stato(iniziale)
-        return iniziale
-    with open(DB_FILE, "r") as f: 
-        return json.load(f)
+    # Restituisce la memoria attuale
+    global furgoni_memoria
+    return furgoni_memoria
 
 def salva_stato(stato):
-    with open(DB_FILE, "w") as f: 
-        json.dump(stato, f)
+    # Aggiorna la memoria globale
+    global furgoni_memoria
+    furgoni_memoria = stato
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -127,6 +129,27 @@ def index():
             return redirect(url_for('index'))
 
     return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
+
+# --- NUOVA ROTTA PER IL COMANDO VOCALE ---
+@app.route("/elabora_voce", methods=["POST"])
+def elabora_voce():
+    try:
+        data = request.json
+        testo_vocale = data.get("testo", "")
+        prompt = f"Analizza: '{testo_vocale}'. Rispondi SOLO in JSON: {{\"targa\": \"GA087CH\" se piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso, \"autista\": \"Nome\", \"km\": numero, \"luogo\": \"Posto\"}}"
+        
+        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama-3.1-sonar-small-128k-online",
+            "messages": [{"role": "system", "content": "Rispondi solo in JSON."}, {"role": "user", "content": prompt}],
+            "temperature": 0
+        }
+        r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
+        risposta_ia = r.json()['choices'][0]['message']['content']
+        json_pulito = risposta_ia.replace('```json', '').replace('```', '').strip()
+        return jsonify(json.loads(json_pulito))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
