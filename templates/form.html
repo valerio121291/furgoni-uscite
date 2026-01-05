@@ -3,42 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test IA Logistica</title>
+    <title>Logistica IA - Test Completo</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #0f172a; color: white; }
-        .test-box { max-width: 400px; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin: auto; }
-        label { display: block; margin-top: 15px; color: #38bdf8; font-size: 0.8rem; font-weight: bold; }
-        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #334155; border-radius: 10px; background: #0f172a; color: white; box-sizing: border-box; }
-        .mic-btn { background: #38bdf8; border: none; padding: 20px; width: 100%; border-radius: 15px; cursor: pointer; color: #0f172a; font-weight: 900; margin-top: 20px; text-transform: uppercase; transition: 0.3s; }
+        .test-box { max-width: 450px; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin: auto; }
+        label { display: block; margin-top: 15px; color: #38bdf8; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #334155; border-radius: 10px; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
+        .mic-btn { background: #38bdf8; border: none; padding: 20px; width: 100%; border-radius: 15px; cursor: pointer; color: #0f172a; font-weight: 900; margin-top: 25px; text-transform: uppercase; transition: 0.3s; font-size: 1.1rem; }
         .mic-btn.recording { background: #ef4444; animation: pulse 1.5s infinite; }
-        #status { font-size: 0.75rem; color: #94a3b8; text-align: center; margin-top: 15px; min-height: 1.2em; font-style: italic; }
+        #status { font-size: 0.85rem; color: #94a3b8; text-align: center; margin-top: 15px; min-height: 2.5em; line-height: 1.4; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="test-box">
-    <h2 style="text-align: center; margin-top: 0;">Logistica IA</h2>
+    <h2 style="text-align: center; margin-top: 0; color: #38bdf8;">TEST VOCALE IA</h2>
     
-    <label>Furgone</label>
+    <label>Furgone (Targa)</label>
     <select id="targa_select">
-        <option value="">- Seleziona -</option>
+        <option value="">- Seleziona Furgone -</option>
         <option value="GA087CH">Piccolo (GA087CH)</option>
         <option value="GX942TS">Medio (GX942TS)</option>
         <option value="GG862HC">Grosso (GG862HC)</option>
     </select>
 
     <label>Autista</label>
-    <input type="text" id="autista_input" placeholder="In attesa di voce...">
+    <input list="autisti_list" id="autista_input" placeholder="Chi guida?">
+    <datalist id="autisti_list">
+        <option value="Valerio">
+        <option value="Daniele">
+        <option value="Costantino">
+        <option value="Simone">
+        <option value="Stefano">
+    </datalist>
 
-    <label>KM</label>
-    <input type="number" id="km_input" placeholder="00000">
+    <label>Chilometri Attuali</label>
+    <input type="number" id="km_input" placeholder="Esempio: 12500">
 
-    <label>Partenza</label>
-    <input type="text" id="partenza_input" placeholder="Località">
+    <label>Punto di Partenza</label>
+    <input type="text" id="partenza_input" placeholder="Città o indirizzo">
 
-    <button class="mic-btn" id="mic-btn">Tocca e Parla</button>
-    <div id="status">Pronto all'ascolto</div>
+    <button class="mic-btn" id="mic-btn">🎙️ Parla Ora</button>
+    <div id="status">Clicca sul bottone e di' ad esempio:<br>"Sono Valerio, parto da Roma con il furgone piccolo e ho 500 km"</div>
 </div>
 
 <script>
@@ -48,8 +55,7 @@
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        recognition.continuous = false;
-        recognition.interimResults = true; // Permette di vedere il testo mentre parli
+        recognition.interimResults = true;
 
         micBtn.onclick = () => {
             recognition.start();
@@ -69,12 +75,11 @@
                 }
             }
 
-            // Mostra il testo provvisorio mentre parli per non farlo "sparire"
             status.innerText = interimTranscript || finalTranscript;
 
-            if (finalTranscript) {
+            if (event.results[0].isFinal) {
                 micBtn.classList.remove('recording');
-                status.innerText = "Analisi in corso: " + finalTranscript;
+                status.innerText = "Analisi dati in corso...";
 
                 fetch('/elabora_voce', {
                     method: 'POST',
@@ -83,34 +88,37 @@
                 })
                 .then(res => res.json())
                 .then(data => {
-                    console.log("Dati ricevuti dall'IA:", data);
+                    console.log("Risposta IA:", data);
                     
-                    // Riempimento campi con controllo nomi
-                    if(data.targa) document.getElementById('targa_select').value = data.targa;
-                    if(data.autista) document.getElementById('autista_input').value = data.autista;
-                    if(data.km) document.getElementById('km_input').value = data.km;
-                    if(data.partenza) document.getElementById('partenza_input').value = data.partenza;
+                    // COMPILAZIONE CAMPI
+                    if(data.targa) {
+                        document.getElementById('targa_select').value = data.targa;
+                    }
+                    if(data.autista) {
+                        document.getElementById('autista_input').value = data.autista;
+                    }
+                    if(data.km) {
+                        document.getElementById('km_input').value = data.km;
+                    }
+                    if(data.partenza) {
+                        document.getElementById('partenza_input').value = data.partenza;
+                    }
                     
-                    status.innerText = "✅ Dati inseriti correttamente!";
+                    status.innerHTML = "✅ <b style='color:#22c55e'>Dati inseriti!</b><br>Frase: " + finalTranscript;
                 })
                 .catch(err => {
-                    status.innerText = "❌ Errore di connessione.";
+                    status.innerText = "❌ Errore durante l'analisi.";
                     console.error(err);
                 });
             }
         };
 
-        recognition.onerror = (event) => {
+        recognition.onerror = () => {
             micBtn.classList.remove('recording');
-            status.innerText = "Errore: " + event.error;
+            status.innerText = "Errore microfono.";
         };
-
-        recognition.onend = () => {
-            micBtn.classList.remove('recording');
-        };
-
     } else {
-        status.innerText = "Browser non supportato (usa Chrome).";
+        status.innerText = "Usa Chrome per il test vocale.";
     }
 </script>
 
