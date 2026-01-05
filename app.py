@@ -1,10 +1,17 @@
-import os, json, requests, re
+import os, json, requests, re, smtplib
 from flask import Flask, render_template, request, jsonify
+from fpdf import FPDF
+from email.message import EmailMessage
 
 app = Flask(__name__)
 
-# Assicurati di impostare la variabile d'ambiente o scriverla qui per il test locale
-PPLX_API_KEY = os.getenv("PPLX_API_KEY", "TUO_TOKEN_QUI")
+# --- CONFIGURAZIONE PERPLEXITY ---
+PPLX_API_KEY = os.getenv("PPLX_API_KEY", "TUO_TOKEN_PERPLEXITY")
+
+# --- CONFIGURAZIONE EMAIL ---
+EMAIL_MITTENTE = "pvalerio910@gmail.com"
+EMAIL_PASSWORD = "ogte uepp dqmt pcvg" # La tua password app
+EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 
 @app.route("/")
 def index():
@@ -14,23 +21,14 @@ def index():
 def elabora_voce():
     try:
         testo = request.json.get("testo", "")
-        print(f"Testo ricevuto: {testo}") # Per vedere cosa arriva nel terminale
-
-        headers = {
-            "Authorization": f"Bearer {PPLX_API_KEY}", 
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
             "messages": [
                 {
                     "role": "system", 
-                    "content": (
-                        "Sei un estrattore dati per logistica. Rispondi SOLO in JSON puro. "
-                        "Mappe furgoni: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande' o 'grosso'->GG862HC. "
-                        "Usa queste chiavi esatte: targa, autista, km, partenza."
-                    )
+                    "content": "Estrattore dati logistica. Mappe: piccolo->GA087CH, medio->GX942TS, grande->GG862HC. Rispondi SOLO JSON con chiavi: targa, autista, km, partenza."
                 },
                 {"role": "user", "content": f"Estrai dati da: {testo}"}
             ],
@@ -38,29 +36,56 @@ def elabora_voce():
         }
         
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        
-        if r.status_code != 200:
-            return jsonify({"error": f"Errore API: {r.status_code}"}), 500
-
         res_text = r.json()['choices'][0]['message']['content']
-        print(f"Risposta IA: {res_text}")
-
+        
         match = re.search(r'\{.*\}', res_text, re.DOTALL)
         if match:
-            d = json.loads(match.group())
-            # Forziamo i valori a stringa per evitare problemi con il campo 'number' di HTML
-            return jsonify({
-                "targa": str(d.get("targa", "")),
-                "autista": str(d.get("autista", "")),
-                "km": str(d.get("km", "")),
-                "partenza": str(d.get("partenza", ""))
-            })
+            return jsonify(json.loads(match.group()))
+        return jsonify({"error": "no_json"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/genera_e_invia", methods=["POST"])
+def genera_e_invia():
+    try:
+        dati = request.json
+        pdf_name = "Riepilogo_Viaggio.pdf"
         
-        return jsonify({"error": "L'IA non ha restituito un JSON valido"}), 500
+        # 1. CREAZIONE PDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, txt="RAPPORTO PARTENZA MEZZO", ln=True, align='C')
+        pdf.ln(10)
+        
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt=f"Data Invio: {dati.get('data_ora')}", ln=True)
+        pdf.cell(200, 10, txt=f"Autista: {dati.get('autista')}", ln=True)
+        pdf.cell(200, 10, txt=f"Targa Furgone: {dati.get('targa')}", ln=True)
+        pdf.cell(200, 10, txt=f"Chilometri: {dati.get('km')}", ln=True)
+        pdf.cell(200, 10, txt=f"Partenza: {dati.get('partenza')}", ln=True)
+        
+        pdf.output(pdf_name)
+
+        # 2. INVIO EMAIL
+        msg = EmailMessage()
+        msg['Subject'] = f"Report Viaggio: {dati.get('autista')} ({dati.get('targa')})"
+        msg['From'] = EMAIL_MITTENTE
+        msg['To'] = EMAIL_DESTINATARIO
+        msg.set_content(f"Ciao Valerio, in allegato trovi il riepilogo del viaggio generato vocalmente.")
+
+        with open(pdf_name, 'rb') as f:
+            msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=pdf_name)
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+
+        return jsonify({"status": "success", "message": "Email e PDF inviati a te stesso!"})
 
     except Exception as e:
-        print(f"Errore: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Errore: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
