@@ -1,111 +1,14 @@
-import os, json, io, requests, re
-from flask import Flask, render_template, request, session, send_file, redirect, url_for, jsonify
-from datetime import datetime
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from upstash_redis import Redis
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
+import os, json, requests, re
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026_top_secret")
 
-# --- CONFIGURAZIONE ---
-PPLX_API_KEY = os.getenv("PPLX_API_KEY")
+# Configura qui la tua chiave Perplexity
+PPLX_API_KEY = os.getenv("PPLX_API_KEY", "IL_TUO_TOKEN_QUI")
 
-try:
-    kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
-except Exception as e:
-    kv = None
-
-STATO_INIZIALE = {
-    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
-}
-
-def carica_stato():
-    if kv is None: return STATO_INIZIALE
-    try:
-        stato = kv.get("stato_furgoni")
-        if stato: return stato if isinstance(stato, dict) else json.loads(stato)
-    except: pass
-    return STATO_INIZIALE
-
-def salva_stato(stato):
-    if kv:
-        try: kv.set("stato_furgoni", json.dumps(stato))
-        except: pass
-
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    furgoni = carica_stato()
-    targa_attiva = session.get("targa_in_uso")
-    corsa_attiva = furgoni.get(targa_attiva) if targa_attiva else None
-
-    if request.method == "POST":
-        azione = request.form.get("azione")
-        targa = request.form.get("targa")
-
-        if azione == "start":
-            furgoni[targa] = {
-                "targa": targa, "stato": "In Viaggio",
-                "posizione": request.form.get("partenza"),
-                "km_p": request.form.get("km_partenza"),
-                "autista": request.form.get("autista"),
-                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
-            }
-            session["targa_in_uso"] = targa
-            salva_stato(furgoni)
-            return redirect(url_for('index'))
-            
-        elif azione == "arrivo_dest":
-            if targa in furgoni:
-                furgoni[targa].update({
-                    "dest_intermedia": request.form.get("destinazione"),
-                    "km_d": request.form.get("km_destinazione"),
-                    "step": 2, "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
-                })
-                salva_stato(furgoni)
-            return redirect(url_for('index'))
-
-        elif azione == "stop":
-            c = furgoni.get(targa)
-            km_r = request.form.get("km_rientro")
-            data_r = datetime.now().strftime("%d/%m/%Y %H:%M")
-            
-            # Google Sheets logic (omessa per brevità ma integrata nel tuo database)
-            # ... (codice sheets uguale a prima) ...
-
-            # PDF Generation
-            buffer = io.BytesIO()
-            p = canvas.Canvas(buffer, pagesize=A4)
-            p.setFont("Helvetica-Bold", 18)
-            p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            y = 720
-            def draw_block(titolo, info, km, data, y_pos, color_bg):
-                p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
-                p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
-                p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
-                return y_pos - 80
-            y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
-            y = draw_block("2. ARRIVO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
-            p.showPage(); p.save(); buffer.seek(0)
-
-            furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
-            salva_stato(furgoni)
-            session.pop("targa_in_uso", None)
-            return send_file(buffer, as_attachment=True, download_name=f"Report_{targa}.pdf", mimetype='application/pdf')
-
-        elif azione == "annulla":
-            if targa: furgoni[targa].update({"stato": "Libero", "step": 0})
-            salva_stato(furgoni)
-            session.pop("targa_in_uso", None)
-            return redirect(url_for('index'))
-
-    return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
+    return render_template("index.html")
 
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
@@ -113,12 +16,22 @@ def elabora_voce():
         data = request.json
         testo = data.get("testo", "")
         
-        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {PPLX_API_KEY}", 
+            "Content-Type": "application/json"
+        }
+        
+        # System prompt ottimizzato per estrarre anche la partenza
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
             "messages": [
-                {"role": "system", "content": "Sei un estrattore dati. Rispondi SOLO JSON puro. Mappe: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande/grosso'->GG862HC."},
-                {"role": "user", "content": f"Estrai targa, autista, km da: {testo}. Formato: {{\"targa\":\"...\",\"autista\":\"...\",\"km\":0}}"}
+                {
+                    "role": "system", 
+                    "content": "Sei un estrattore dati per logistica. Rispondi SOLO in JSON puro. "
+                               "Mappe furgoni: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'->GG862HC. "
+                               "Estrai: targa, autista, km (numero), partenza (città o via)."
+                },
+                {"role": "user", "content": f"Estrai dati da: {testo}. Formato: {{\"targa\":\"...\",\"autista\":\"...\",\"km\":0, \"partenza\":\"...\"}}"}
             ],
             "temperature": 0
         }
@@ -126,14 +39,14 @@ def elabora_voce():
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         res_text = r.json()['choices'][0]['message']['content']
         
-        # PULIZIA TESTO PER ESTRARRE SOLO IL JSON
+        # Estrazione pulita del JSON tramite Regex
         match = re.search(r'\{.*\}', res_text, re.DOTALL)
         if match:
             return jsonify(json.loads(match.group()))
         
-        return jsonify({"error": "Dati non trovati"}), 500
+        return jsonify({"error": "Formato non riconosciuto"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
