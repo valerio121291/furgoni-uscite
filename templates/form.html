@@ -2,20 +2,21 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Test Finale IA</title>
+    <title>Test IA Logistica</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
-        .box { max-width: 400px; margin: auto; background: #1e293b; padding: 20px; border-radius: 10px; }
-        input, select { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
-        .btn { background: #38bdf8; color: #000; padding: 15px; width: 100%; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .recording { background: #ef4444; }
-        #status { color: #94a3b8; font-size: 0.8rem; margin-top: 10px; text-align: center; }
+        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
+        .box { max-width: 400px; margin: auto; background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
+        .mic-btn { background: #38bdf8; color: #0f172a; padding: 20px; width: 100%; border: none; border-radius: 15px; cursor: pointer; font-weight: bold; font-size: 1.1rem; }
+        .recording { background: #ef4444; animation: pulse 1s infinite; }
+        #status { margin-top: 15px; color: #94a3b8; font-size: 0.9rem; min-height: 40px; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="box">
-    <h3>Compilazione Vocale</h3>
+    <h2>Logistica Vocale</h2>
     
     <label>Furgone</label>
     <select id="targa_select">
@@ -26,62 +27,78 @@
     </select>
 
     <label>Autista</label>
-    <input type="text" id="autista_input" placeholder="Nome Autista">
+    <input type="text" id="autista_input" placeholder="Chi guida?">
 
     <label>KM</label>
-    <input type="number" id="km_input" placeholder="Kilometri">
+    <input type="number" id="km_input" placeholder="Kilometri attuali">
 
     <label>Partenza</label>
-    <input type="text" id="partenza_input" placeholder="Località">
+    <input type="text" id="partenza_input" placeholder="Città di partenza">
 
-    <button class="btn" id="micBtn">CLICCA E PARLA</button>
-    <div id="status">Pronto.</div>
+    <button class="mic-btn" id="mic-btn">PREMI E PARLA</button>
+    <div id="status">In attesa...</div>
 </div>
 
 <script>
-    const micBtn = document.getElementById('micBtn');
+    const micBtn = document.getElementById('mic-btn');
     const status = document.getElementById('status');
 
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        recognition.interimResults = true;
+        recognition.interimResults = false;
 
-        micBtn.onclick = () => { recognition.start(); micBtn.classList.add('recording'); };
+        micBtn.onclick = () => {
+            recognition.start();
+            micBtn.classList.add('recording');
+            status.innerText = "Ti ascolto...";
+        };
 
         recognition.onresult = (event) => {
             const testo = event.results[0][0].transcript;
-            status.innerText = "Sto capendo: " + testo;
+            micBtn.classList.remove('recording');
+            status.innerText = "Analisi: " + testo;
 
-            if (event.results[0].isFinal) {
-                micBtn.classList.remove('recording');
-                status.innerText = "IA sta lavorando...";
+            fetch('/elabora_voce', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({testo: testo})
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log("DATI IA:", data); // Fondamentale per il debug
 
-                fetch('/elabora_voce', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({testo: testo})
-                })
-                .then(res => res.json())
-                .then(data => {
-                    console.log("Dati ricevuti dall'IA:", data);
-                    
-                    // COMPILAZIONE FORZATA
-                    if(data.targa) document.getElementById('targa_select').value = data.targa;
-                    if(data.autista) document.getElementById('autista_input').value = data.autista;
-                    if(data.km) document.getElementById('km_input').value = data.km;
-                    if(data.partenza) document.getElementById('partenza_input').value = data.partenza;
-                    
-                    status.innerText = "✅ DATI INSERITI!";
-                })
-                .catch(err => {
-                    status.innerText = "❌ Errore server.";
-                    console.error(err);
-                });
-            }
+                // COMPILAZIONE SICURA
+                if(data.targa) {
+                    const select = document.getElementById('targa_select');
+                    select.value = data.targa;
+                    console.log("Impostata Targa:", data.targa);
+                }
+                
+                if(data.autista) {
+                    document.getElementById('autista_input').value = data.autista;
+                    console.log("Impostato Autista:", data.autista);
+                }
+                
+                if(data.km) {
+                    document.getElementById('km_input').value = data.km;
+                    console.log("Impostati KM:", data.km);
+                }
+
+                if(data.partenza) {
+                    document.getElementById('partenza_input').value = data.partenza;
+                    console.log("Impostata Partenza:", data.partenza);
+                }
+
+                status.innerText = "✅ DATI INSERITI!";
+            })
+            .catch(err => {
+                status.innerText = "❌ Errore connessione";
+                console.error(err);
+            });
         };
     } else {
-        status.innerText = "Browser non supportato.";
+        status.innerText = "Usa Chrome per parlare.";
     }
 </script>
 </body>
