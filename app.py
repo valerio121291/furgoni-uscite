@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
-# Nuova libreria per il database Upstash (Redis)
+# Libreria per il database Upstash (Redis)
 from upstash_redis import Redis
 
 # Librerie per Google Sheets
@@ -13,25 +13,28 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
-app.secret_key = "logistica_csa_valerio_2026_top"
+# Chiave per gestire le sessioni (furgone in uso)
+app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
-# --- CONFIGURAZIONE IA E CONNESSIONI ---
-PPLX_API_KEY = "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"
+# --- CONFIGURAZIONE CONNESSIONI ---
+# Recupera le API Key dalle Environment Variables di Vercel
+PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 
-# Inizializzazione sicura Database Upstash
+# Inizializzazione Database Upstash
 try:
     kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
 except Exception as e:
     kv = None
     print(f"Errore connessione Redis: {e}")
 
+# Stato di default se il database è vuoto
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
     "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
 }
 
-# --- FUNZIONI DI GESTIONE STATO PERSISTENTE ---
+# --- FUNZIONI DI PERSISTENZA ---
 def carica_stato():
     if kv is None:
         return STATO_INIZIALE
@@ -40,7 +43,7 @@ def carica_stato():
         if stato:
             return stato if isinstance(stato, dict) else json.loads(stato)
     except Exception as e:
-        print(f"Errore lettura KV: {e}")
+        print(f"Errore lettura database: {e}")
     return STATO_INIZIALE
 
 def salva_stato(stato):
@@ -48,9 +51,9 @@ def salva_stato(stato):
         try:
             kv.set("stato_furgoni", json.dumps(stato))
         except Exception as e:
-            print(f"Errore scrittura KV: {e}")
+            print(f"Errore salvataggio database: {e}")
 
-# --- ROTTE DELL'APPLICAZIONE ---
+# --- ROTTE ---
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -64,11 +67,13 @@ def index():
 
         if azione == "start":
             furgoni[targa] = {
-                "targa": targa, "stato": "In Viaggio",
+                "targa": targa, 
+                "stato": "In Viaggio",
                 "posizione": request.form.get("partenza"),
                 "km_p": request.form.get("km_partenza"),
                 "autista": request.form.get("autista"),
-                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 1, 
+                "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
@@ -79,7 +84,8 @@ def index():
                 furgoni[targa].update({
                     "dest_intermedia": request.form.get("destinazione"),
                     "km_d": request.form.get("km_destinazione"),
-                    "step": 2, "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    "step": 2, 
+                    "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
                 })
                 salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -97,16 +103,27 @@ def index():
                     info = json.loads(creds_json)
                     creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
                     service = build('sheets', 'v4', credentials=creds)
-                    nuova_riga = [[c['data_p'], c.get('data_d', '-'), data_r, c['autista'], targa, c['posizione'], c.get('dest_intermedia', '-'), c['km_p'], c.get('km_d', '-'), km_r]]
-                    service.spreadsheets().values().append(spreadsheetId=spreadsheet_id, range="Foglio1!A:J", valueInputOption="RAW", body={'values': nuova_riga}).execute()
+                    nuova_riga = [[
+                        c['data_p'], c.get('data_d', '-'), data_r, 
+                        c['autista'], targa, c['posizione'], 
+                        c.get('dest_intermedia', '-'), 
+                        c['km_p'], c.get('km_d', '-'), km_r
+                    ]]
+                    service.spreadsheets().values().append(
+                        spreadsheetId=spreadsheet_id, 
+                        range="Foglio1!A:J", 
+                        valueInputOption="RAW", 
+                        body={'values': nuova_riga}
+                    ).execute()
             except Exception as e:
-                print(f"Errore Sheets: {e}")
+                print(f"Errore Google Sheets: {e}")
 
-            # 2. CREAZIONE PDF
+            # 2. GENERAZIONE PDF
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
             p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
+            
             y = 720
             def draw_block(titolo, info, km, data, y_pos, color_bg):
                 p.setFillColor(color_bg)
@@ -118,20 +135,29 @@ def index():
                 p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}")
                 p.drawString(60, y_pos-50, f"KM: {km}")
                 return y_pos - 80
+
             y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
             y = draw_block("2. ARRIVO DESTINAZIONE", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
             y = draw_block("3. RIENTRO ALLA BASE", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
+            
             p.setFont("Helvetica-Bold", 14)
-            p.drawString(50, y-40, f"TOTALE KM: {int(km_r) - int(c['km_p'])}")
+            totale_km = int(km_r) - int(c['km_p'])
+            p.drawString(50, y-40, f"TOTALE KM PERCORSI: {totale_km}")
             p.showPage()
             p.save()
             buffer.seek(0)
 
-            # 3. RESET STATO E SALVATAGGIO
+            # 3. RESET FURGONE E SALVATAGGIO
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
-            return send_file(buffer, as_attachment=True, download_name=f"CSA_{targa}.pdf", mimetype='application/pdf')
+            
+            return send_file(
+                buffer, 
+                as_attachment=True, 
+                download_name=f"Report_CSA_{targa}_{datetime.now().strftime('%Y%m%d')}.pdf", 
+                mimetype='application/pdf'
+            )
 
         elif azione == "annulla":
             if targa:
@@ -147,15 +173,39 @@ def elabora_voce():
     try:
         data = request.json
         testo = data.get("testo", "")
-        prompt = f"Analizza: '{testo}'. Rispondi SOLO in JSON: {{\"targa\": \"GA087CH\" se piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso, \"autista\": \"Nome\", \"km\": numero, \"luogo\": \"Posto\"}}"
-        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-sonar-small-128k-online", "messages": [{"role": "system", "content": "Rispondi solo JSON."}, {"role": "user", "content": prompt}], "temperature": 0}
+        
+        prompt = (
+            f"Analizza questo testo: '{testo}'. "
+            "Estrai i dati e rispondi SOLO con un oggetto JSON così composto: "
+            "{\"targa\": \"GA087CH\" se indica furgone piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso/grande, "
+            "\"autista\": \"Nome dell'autista\", \"km\": numero dei chilometri, \"luogo\": \"punto di partenza\"}. "
+            "Non aggiungere altro testo fuori dal JSON."
+        )
+        
+        headers = {
+            "Authorization": f"Bearer {PPLX_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.1-sonar-small-128k-online",
+            "messages": [
+                {"role": "system", "content": "Sei un assistente che restituisce solo dati in formato JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0
+        }
+        
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         risposta_ia = r.json()['choices'][0]['message']['content']
+        
+        # Pulizia da eventuali blocchi di codice markdown
         json_pulito = risposta_ia.replace('```json', '').replace('```', '').strip()
         return jsonify(json.loads(json_pulito))
     except Exception as e:
+        print(f"Errore IA: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
+    # Per il test locale; su Vercel viene ignorato
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
