@@ -13,12 +13,13 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 app = Flask(__name__)
-# Chiave per gestire le sessioni (furgone in uso)
-app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
+# Chiave per gestire le sessioni
+app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026_top_secret")
 
 # --- CONFIGURAZIONE CONNESSIONI ---
-# Recupera le API Key dalle Environment Variables di Vercel
-PPLX_API_KEY = os.getenv("PPLX_API_KEY")
+# Prendiamo la chiave API dalle impostazioni di Vercel
+# Se non la trova, usiamo quella che hai fornito come backup
+PPLX_API_KEY = os.getenv("PPLX_API_KEY", "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")
 
 # Inizializzazione Database Upstash
 try:
@@ -27,7 +28,6 @@ except Exception as e:
     kv = None
     print(f"Errore connessione Redis: {e}")
 
-# Stato di default se il database è vuoto
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
@@ -36,22 +36,17 @@ STATO_INIZIALE = {
 
 # --- FUNZIONI DI PERSISTENZA ---
 def carica_stato():
-    if kv is None:
-        return STATO_INIZIALE
+    if kv is None: return STATO_INIZIALE
     try:
         stato = kv.get("stato_furgoni")
-        if stato:
-            return stato if isinstance(stato, dict) else json.loads(stato)
-    except Exception as e:
-        print(f"Errore lettura database: {e}")
+        if stato: return stato if isinstance(stato, dict) else json.loads(stato)
+    except: pass
     return STATO_INIZIALE
 
 def salva_stato(stato):
     if kv:
-        try:
-            kv.set("stato_furgoni", json.dumps(stato))
-        except Exception as e:
-            print(f"Errore salvataggio database: {e}")
+        try: kv.set("stato_furgoni", json.dumps(stato))
+        except: pass
 
 # --- ROTTE ---
 
@@ -67,13 +62,11 @@ def index():
 
         if azione == "start":
             furgoni[targa] = {
-                "targa": targa, 
-                "stato": "In Viaggio",
+                "targa": targa, "stato": "In Viaggio",
                 "posizione": request.form.get("partenza"),
                 "km_p": request.form.get("km_partenza"),
                 "autista": request.form.get("autista"),
-                "step": 1, 
-                "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "step": 1, "data_p": datetime.now().strftime("%d/%m/%Y %H:%M")
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
@@ -84,8 +77,7 @@ def index():
                 furgoni[targa].update({
                     "dest_intermedia": request.form.get("destinazione"),
                     "km_d": request.form.get("km_destinazione"),
-                    "step": 2, 
-                    "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    "step": 2, "data_d": datetime.now().strftime("%d/%m/%Y %H:%M")
                 })
                 salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -103,66 +95,36 @@ def index():
                     info = json.loads(creds_json)
                     creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
                     service = build('sheets', 'v4', credentials=creds)
-                    nuova_riga = [[
-                        c['data_p'], c.get('data_d', '-'), data_r, 
-                        c['autista'], targa, c['posizione'], 
-                        c.get('dest_intermedia', '-'), 
-                        c['km_p'], c.get('km_d', '-'), km_r
-                    ]]
-                    service.spreadsheets().values().append(
-                        spreadsheetId=spreadsheet_id, 
-                        range="Foglio1!A:J", 
-                        valueInputOption="RAW", 
-                        body={'values': nuova_riga}
-                    ).execute()
-            except Exception as e:
-                print(f"Errore Google Sheets: {e}")
+                    nuova_riga = [[c['data_p'], c.get('data_d', '-'), data_r, c['autista'], targa, c['posizione'], c.get('dest_intermedia', '-'), c['km_p'], c.get('km_d', '-'), km_r]]
+                    service.spreadsheets().values().append(spreadsheetId=spreadsheet_id, range="Foglio1!A:J", valueInputOption="RAW", body={'values': nuova_riga}).execute()
+            except: pass
 
-            # 2. GENERAZIONE PDF
+            # 2. PDF
             buffer = io.BytesIO()
             p = canvas.Canvas(buffer, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
             p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            
             y = 720
             def draw_block(titolo, info, km, data, y_pos, color_bg):
-                p.setFillColor(color_bg)
-                p.rect(50, y_pos-60, 500, 60, fill=1)
-                p.setFillColor(colors.black)
-                p.setFont("Helvetica-Bold", 11)
-                p.drawString(60, y_pos-20, titolo)
-                p.setFont("Helvetica", 10)
-                p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}")
-                p.drawString(60, y_pos-50, f"KM: {km}")
+                p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
+                p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
+                p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
                 return y_pos - 80
-
             y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
             y = draw_block("2. ARRIVO DESTINAZIONE", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
             y = draw_block("3. RIENTRO ALLA BASE", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
-            
-            p.setFont("Helvetica-Bold", 14)
-            totale_km = int(km_r) - int(c['km_p'])
-            p.drawString(50, y-40, f"TOTALE KM PERCORSI: {totale_km}")
-            p.showPage()
-            p.save()
-            buffer.seek(0)
+            p.setFont("Helvetica-Bold", 14); p.drawString(50, y-40, f"TOTALE KM: {int(km_r) - int(c['km_p'])}")
+            p.showPage(); p.save(); buffer.seek(0)
 
-            # 3. RESET FURGONE E SALVATAGGIO
+            # 3. RESET
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
-            
-            return send_file(
-                buffer, 
-                as_attachment=True, 
-                download_name=f"Report_CSA_{targa}_{datetime.now().strftime('%Y%m%d')}.pdf", 
-                mimetype='application/pdf'
-            )
+            return send_file(buffer, as_attachment=True, download_name=f"CSA_{targa}.pdf", mimetype='application/pdf')
 
         elif azione == "annulla":
-            if targa:
-                furgoni[targa].update({"stato": "Libero", "step": 0})
-                salva_stato(furgoni)
+            if targa: furgoni[targa].update({"stato": "Libero", "step": 0})
+            salva_stato(furgoni)
             session.pop("targa_in_uso", None)
             return redirect(url_for('index'))
 
@@ -174,12 +136,13 @@ def elabora_voce():
         data = request.json
         testo = data.get("testo", "")
         
+        # PROMPT OTTIMIZZATO PER ESSERE PIÙ AGGRESSIVO NELL'ESTRAZIONE
         prompt = (
-            f"Analizza questo testo: '{testo}'. "
-            "Estrai i dati e rispondi SOLO con un oggetto JSON così composto: "
-            "{\"targa\": \"GA087CH\" se indica furgone piccolo, \"GX942TS\" se medio, \"GG862HC\" se grosso/grande, "
-            "\"autista\": \"Nome dell'autista\", \"km\": numero dei chilometri, \"luogo\": \"punto di partenza\"}. "
-            "Non aggiungere altro testo fuori dal JSON."
+            f"Testo dell'utente: '{testo}'. "
+            "Estrai i dati e restituisci SOLO un JSON puro. "
+            "Regole targa: se dice 'piccolo' o '087' -> GA087CH, se dice 'medio' o '942' -> GX942TS, se dice 'grande/grosso' o '862' -> GG862HC. "
+            "Formato richiesto: {\"targa\": \"TARGA\", \"autista\": \"Nome\", \"km\": numero_intero, \"luogo\": \"Partenza\"}. "
+            "Se non trovi un dato, scrivi null."
         )
         
         headers = {
@@ -190,22 +153,23 @@ def elabora_voce():
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
             "messages": [
-                {"role": "system", "content": "Sei un assistente che restituisce solo dati in formato JSON."},
+                {"role": "system", "content": "Rispondi esclusivamente in formato JSON. Niente chiacchiere."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0
         }
         
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        risposta_ia = r.json()['choices'][0]['message']['content']
         
-        # Pulizia da eventuali blocchi di codice markdown
+        # Log di emergenza per vedere cosa risponde l'API (visibile nei log di Vercel)
+        print(f"DEBUG PPLX: {r.text}")
+        
+        risposta_ia = r.json()['choices'][0]['message']['content']
         json_pulito = risposta_ia.replace('```json', '').replace('```', '').strip()
         return jsonify(json.loads(json_pulito))
     except Exception as e:
-        print(f"Errore IA: {e}")
+        print(f"ERRORE IA: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # Per il test locale; su Vercel viene ignorato
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
