@@ -15,11 +15,12 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 app.secret_key = "logistica_csa_valerio_2026_top"
 
-# --- CONFIGURAZIONE ---
+# --- CONFIGURAZIONE IA ---
 PPLX_API_KEY = "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"
 
 # Inizializzazione Database Upstash Redis
 try:
+    # Vercel inietta automaticamente queste variabili se hai connesso Upstash dal Marketplace
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
     if url and token:
@@ -36,13 +37,14 @@ STATO_INIZIALE = {
     "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
 }
 
-# --- GESTIONE STATO ---
+# --- GESTIONE STATO PERSISTENTE ---
 def carica_stato():
     if kv is None:
         return STATO_INIZIALE
     try:
         stato = kv.get("stato_furgoni")
         if stato:
+            # upstash-redis gestisce automaticamente la conversione se salvato come dict
             return stato if isinstance(stato, dict) else json.loads(stato)
     except Exception as e:
         print(f"Errore lettura KV: {e}")
@@ -51,11 +53,12 @@ def carica_stato():
 def salva_stato(stato):
     if kv:
         try:
+            # Salviamo lo stato come stringa JSON per sicurezza
             kv.set("stato_furgoni", json.dumps(stato))
         except Exception as e:
             print(f"Errore scrittura KV: {e}")
 
-# --- ROTTE ---
+# --- ROTTE APPLICAZIONE ---
 @app.route("/", methods=["GET", "POST"])
 def index():
     furgoni = carica_stato()
