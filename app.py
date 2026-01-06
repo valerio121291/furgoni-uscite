@@ -1,6 +1,6 @@
 import os, json, io, requests, re, smtplib
 from flask import Flask, render_template, request, session, send_file, redirect, url_for, jsonify
-from datetime import datetime, timedelta, timezone # Aggiunto timedelta e timezone
+from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -8,6 +8,7 @@ from upstash_redis import Redis
 from email.message import EmailMessage
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import pytz # Importa la gestione dei fusi orari
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
@@ -19,10 +20,10 @@ EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE'
 
-# Funzione per ottenere l'orario italiano corrente
+# FUNZIONE ORARIO ROMA (Gestisce ora legale/solare automaticamente)
 def get_now_it():
-    # Sposta l'orario UTC avanti di 1 ora
-    return (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%d/%m/%Y %H:%M")
+    tz_roma = pytz.timezone('Europe/Rome')
+    return datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M")
 
 try:
     kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
@@ -66,7 +67,7 @@ def index():
                 "posizione": request.form.get("partenza"),
                 "km_p": request.form.get("km_partenza"),
                 "autista": request.form.get("autista"),
-                "step": 1, "data_p": get_now_it() # Ora Italiana
+                "step": 1, "data_p": get_now_it()
             }
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
@@ -77,7 +78,7 @@ def index():
                 furgoni[targa].update({
                     "dest_intermedia": request.form.get("destinazione"),
                     "km_d": request.form.get("km_destinazione"),
-                    "step": 2, "data_d": get_now_it() # Ora Italiana
+                    "step": 2, "data_d": get_now_it()
                 })
                 salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -85,7 +86,7 @@ def index():
         elif azione == "stop":
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
-            data_r = get_now_it() # Ora Italiana
+            data_r = get_now_it()
             
             # 1. GOOGLE SHEETS
             try:
@@ -97,7 +98,7 @@ def index():
                 ).execute()
             except: pass
 
-            # 2. PDF PROFESSIONALE CON TUTTI I KM
+            # 2. PDF CON KM IN OGNI FASE
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
@@ -129,7 +130,6 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
-            # Reset
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -143,4 +143,24 @@ def index():
 
     return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
 
-# ... (Resto del codice elabora_voce rimane uguale) ...
+@app.route("/elabora_voce", methods=["POST"])
+def elabora_voce():
+    try:
+        testo = request.json.get("testo", "")
+        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama-3.1-sonar-small-128k-online",
+            "messages": [
+                {"role": "system", "content": "Estrai dati logistica in JSON. Mappa: piccolo->GA087CH, medio->GX942TS, grande->GG862HC."},
+                {"role": "user", "content": testo}
+            ],
+            "temperature": 0
+        }
+        r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
+        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
+        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
+    except:
+        return jsonify({"error": "IA offline"}), 500
+
+if __name__ == "__main__":
+    app.run()
