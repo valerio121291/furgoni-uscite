@@ -7,3 +7,4 @@ google-auth-oauthlib
 reportlab
 upstash-redis
 fpdf2
+pytz
