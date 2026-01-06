@@ -25,7 +25,9 @@
         .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
         .btn-gps { background: #334155; color: var(--accent); font-size: 0.7rem; border: 1px dashed var(--accent); margin-top: 10px; padding: 10px; }
         
-        /* Nuova Sezione Vocale Integrata nel Form */
+        /* Stile per il tasto Indietro */
+        .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
+        
         .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
         .mic-btn { width: 65px; height: 65px; border-radius: 50%; background: var(--accent); border: 4px solid var(--card-dark); font-size: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; color: #0f172a; }
         .mic-btn.recording { background: #ef4444; animation: pulse 1s infinite; color: white; }
@@ -103,7 +105,8 @@
 
                         <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Viaggio</button>
                     {% endif %}
-                    <button type="submit" name="azione" value="annulla" style="background:none; border:none; color:gray; width:100%; margin-top:15px; cursor:pointer;">Annulla</button>
+                    
+                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla">Indietro / Errore</button>
                 {% endif %}
             </form>
         </div>
@@ -118,7 +121,7 @@
         recognition.lang = 'it-IT';
         
         micBtn.onclick = (e) => { 
-            e.preventDefault(); // Impedisce invio form accidentale
+            e.preventDefault(); 
             recognition.start(); 
             micBtn.classList.add('recording'); 
         };
