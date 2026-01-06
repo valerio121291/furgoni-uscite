@@ -8,7 +8,7 @@ from upstash_redis import Redis
 from email.message import EmailMessage
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-import pytz # Importa la gestione dei fusi orari
+import pytz #
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
@@ -20,7 +20,7 @@ EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE'
 
-# FUNZIONE ORARIO ROMA (Gestisce ora legale/solare automaticamente)
+# Funzione Orario Roma
 def get_now_it():
     tz_roma = pytz.timezone('Europe/Rome')
     return datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M")
@@ -98,7 +98,7 @@ def index():
                 ).execute()
             except: pass
 
-            # 2. PDF CON KM IN OGNI FASE
+            # 2. PDF PROFESSIONALE
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
