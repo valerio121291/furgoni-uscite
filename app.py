@@ -17,7 +17,7 @@ PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE' # Assicurati di mettere il tuo ID qui
+SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE' #
 
 try:
     kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
@@ -92,7 +92,7 @@ def index():
                 ).execute()
             except: pass
 
-            # 2. PDF PROFESSIONALE (ESTETICA MIGLIORATA)
+            # 2. PDF PROFESSIONALE CON KM IN OGNI FASE
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
@@ -105,8 +105,9 @@ def index():
                 return y_pos - 80
 
             y = 720
+            # Ora i KM vengono passati correttamente per ogni fase del viaggio
             y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
-            y = draw_block("2. ARRIVO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
+            y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
             y = draw_block("3. RIENTRO", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
             p.showPage(); p.save()
 
