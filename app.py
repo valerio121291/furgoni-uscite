@@ -1,203 +1,227 @@
-import os, json, io, requests, re, smtplib
-from flask import Flask, render_template, request, session, send_file, redirect, url_for, jsonify
-from datetime import datetime
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from upstash_redis import Redis
-from email.message import EmailMessage
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import pytz 
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Logistica CSA - Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --bg-dark: #0f172a; --card-dark: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --text-main: #f8fafc; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-dark); margin: 0; padding-bottom: 50px; color: var(--text-main); }
+        .header { background: #000; color: var(--accent); padding: 25px; text-align: center; font-weight: 800; border-bottom: 2px solid var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        
+        /* Dashboard Targhe */
+        .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
+        .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; position: relative; }
+        .truck-card.In.Viaggio { border: 2px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.3); }
+        .truck-card.Libero { border: 2px solid var(--success); opacity: 0.9; }
+        
+        /* Tanica Gasolio */
+        .fuel-indicator { margin-top: 8px; font-size: 1.3rem; }
+        .fuel-text { font-size: 0.6rem; text-transform: uppercase; display: block; margin-top: 2px; font-weight: bold; }
+        .btn-refuel { background: rgba(34, 197, 94, 0.1); border: 1px solid var(--success); color: var(--success); padding: 6px; border-radius: 8px; font-size: 0.6rem; margin-top: 10px; cursor: pointer; width: 90%; font-weight: 800; }
 
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
+        /* Form e Input */
+        .main-container { padding: 0 15px; }
+        .card { background: var(--card-dark); padding: 25px; border-radius: 24px; border: 1px solid #334155; margin-top: 10px; }
+        label { display: block; margin-top: 15px; font-weight: 600; font-size: 0.75rem; color: var(--accent); text-transform: uppercase; }
+        select, input { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
+        
+        /* Bottoni */
+        .btn { width: 100%; padding: 20px; margin-top: 15px; border-radius: 15px; border: none; font-weight: 800; cursor: pointer; text-transform: uppercase; display: block; transition: 0.3s; }
+        .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
+        .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
+        .btn-nav { background: #334155; color: #fbbf24; border: 1px solid #fbbf24; margin-top: 10px; padding: 12px; font-size: 0.8rem; }
+        .btn-wa { background: #25d366; color: white; margin-top: 10px; }
+        .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
+        
+        /* Vocal Search */
+        .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
+        .mic-btn { width: 65px; height: 65px; border-radius: 50%; background: var(--accent); border: 4px solid var(--card-dark); font-size: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; color: #0f172a; }
+        .mic-btn.recording { background: var(--danger); animation: pulse 1s infinite; color: white; }
+        
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+    <div class="header">LOGISTICA CSA</div>
 
-# --- CONFIGURAZIONE ---
-PPLX_API_KEY = os.getenv("PPLX_API_KEY")
-EMAIL_MITTENTE = "pvalerio910@gmail.com"
-EMAIL_PASSWORD = "ogteueppdqmtpcvg"
-EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
-CAPACITA_SERBATOIO = 70 # Litri per furgone
+    <div class="status-container">
+        {% for t, info in furgoni.items() %}
+        <div class="truck-card {{ info.stato }}">
+            <strong>{{ t }}</strong>
+            <div class="fuel-indicator">
+                {% if info.carburante == "Pieno" %}
+                    <i class="fas fa-gas-pump" style="color: var(--success);"></i>
+                    <span class="fuel-text" style="color: var(--success);">Pieno</span>
+                {% elif info.carburante == "Metà" %}
+                    <i class="fas fa-gas-pump" style="color: var(--warning);"></i>
+                    <span class="fuel-text" style="color: var(--warning);">Metà</span>
+                {% elif info.carburante == "Semivuoto" %}
+                    <i class="fas fa-gas-pump" style="color: #f97316;"></i>
+                    <span class="fuel-text" style="color: #f97316;">Quasi Vuoto</span>
+                {% else %}
+                    <i class="fas fa-gas-pump" style="color: var(--danger);"></i>
+                    <span class="fuel-text" style="color: var(--danger);">Riserva</span>
+                {% endif %}
+            </div>
+            <button type="button" class="btn-refuel" onclick="vaiARifornimento('{{ t }}')">
+                <i class="fas fa-plus"></i> <i class="fas fa-gas-pump"></i> LITRI
+            </button>
+            <div style="font-size: 0.55rem; margin-top: 5px; opacity: 0.7;">{{ info.stato }}</div>
+        </div>
+        {% endfor %}
+    </div>
 
-# Funzione Orario Roma
-def get_now_it():
-    tz_roma = pytz.timezone('Europe/Rome')
-    return datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M")
+    <div class="main-container">
+        <div class="card">
+            <form method="post" id="main-form">
+                {% if not targa_attiva %}
+                    <label>Seleziona Mezzo</label>
+                    <select name="targa" id="targa_select">
+                        <option value="GA087CH">🚚 Piccolo (GA087CH)</option>
+                        <option value="GX942TS">🚚🚚 Medio (GX942TS)</option>
+                        <option value="GG862HC">🚚🚚🚚 Grosso (GG862HC)</option>
+                    </select>
 
-try:
-    kv = Redis(url=os.getenv("KV_REST_API_URL"), token=os.getenv("KV_REST_API_TOKEN"))
-except:
-    kv = None
+                    <label>Autista</label>
+                    <select name="autista">
+                        <option value="Valerio">Valerio</option>
+                        <option value="Daniele">Daniele</option>
+                        <option value="Costantino">Costantino</option>
+                        <option value="Simone">Simone</option>
+                        <option value="Stefano">Stefano</option>
+                    </select>
 
-STATO_INIZIALE = {
-    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
-    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
-    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"}
-}
+                    <label>KM Iniziali (Lettura Cruscotto)</label>
+                    <input type="number" name="km_partenza" id="km_input" placeholder="Es. 125400" required>
+                    
+                    <div class="voice-wrapper">
+                        <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
+                        <p style="font-size: 0.7rem; margin-top: 10px; color: var(--accent);">Dì i chilometri a voce</p>
+                    </div>
 
-def get_google_service():
-    info = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
-    creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
-    return build('sheets', 'v4', credentials=creds)
+                    <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
 
-def carica_stato():
-    if kv is None: return STATO_INIZIALE
-    try:
-        stato = kv.get("stato_furgoni")
-        return stato if isinstance(stato, dict) else json.loads(stato)
-    except: return STATO_INIZIALE
+                {% else %}
+                    <input type="hidden" name="targa" value="{{ targa_attiva }}">
+                    
+                    {% if corsa_attiva.step == 1 %}
+                        <label>Destinazione Consegna</label>
+                        <select name="destinazione" id="destinazione_field">
+                            <option value="POLICLINICO UMBERTO 1">Policlinico Umberto I</option>
+                            <option value="SAN GIOVANNI">San Giovanni (Via dei Laterani 4)</option>
+                            <option value="PTV">PTV (Tor Vergata P.S.)</option>
+                            <option value="VIMINALE">Viminale</option>
+                            <option value="VIA CAVOUR 5">Via Cavour 5</option>
+                            <option value="VIA GENOVA">Via Genova (Vigili del Fuoco)</option>
+                            <option value="AVEZZANO">Ospedale Avezzano</option>
+                            <option value="AQUILA">Ospedale L'Aquila</option>
+                            <option value="SULMONA">Ospedale Sulmona</option>
+                            <option value="PRATICA DI MARE">Aeronautica Pratica di Mare</option>
+                            <option value="EUR ARCHIVIO DI STATO">EUR Archivio di Stato</option>
+                            <option value="GIRO LIBERO">Giro Libero / Altro</option>
+                        </select>
+                        <button type="button" class="btn btn-nav" onclick="apriNavigatore()">🧭 APRI NAVIGATORE</button>
+                        
+                        <label>KM all'Arrivo</label>
+                        <input type="number" name="km_destinazione" id="km_input" required>
+                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
+                    
+                    {% else %}
+                        <label>KM Finali (Rientro in sede)</label>
+                        <input type="number" name="km_rientro" id="km_input" required>
+                        
+                        <label>Livello Gasolio al Rientro</label>
+                        <select name="carburante">
+                            <option value="Pieno">🟢 PIENO</option>
+                            <option value="Metà">🟡 METÀ</option>
+                            <option value="Semivuoto">🟠 QUASI VUOTO</option>
+                            <option value="Vuoto">🔴 RISERVA</option>
+                        </select>
+                        
+                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi e Invia Report</button>
+                        <button type="button" class="btn btn-wa" onclick="inviaWhatsApp()">🟢 INVIA SU WHATSAPP</button>
+                    {% endif %}
+                    
+                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla" formnovalidate>Annulla / Errore</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
 
-def salva_stato(stato):
-    if kv: kv.set("stato_furgoni", json.dumps(stato))
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    furgoni = carica_stato()
-    targa_attiva = session.get("targa_in_uso")
-    corsa_attiva = furgoni.get(targa_attiva) if targa_attiva else None
-
-    if request.method == "POST":
-        azione = request.form.get("azione")
-        targa = request.form.get("targa")
-
-        if azione == "start":
-            furgoni[targa].update({
-                "stato": "In Viaggio",
-                "posizione": "TIBURTINA",
-                "km_p": request.form.get("km_partenza"),
-                "autista": request.form.get("autista"),
-                "step": 1, 
-                "data_p": get_now_it()
-            })
-            session["targa_in_uso"] = targa
-            salva_stato(furgoni)
-            return redirect(url_for('index'))
-            
-        elif azione == "arrivo_dest":
-            if targa in furgoni:
-                furgoni[targa].update({
-                    "dest_intermedia": request.form.get("destinazione"),
-                    "km_d": request.form.get("km_destinazione"),
-                    "step": 2, 
-                    "data_d": get_now_it()
-                })
-                salva_stato(furgoni)
-            return redirect(url_for('index'))
-
-        elif azione == "stop":
-            c = furgoni.get(targa)
-            km_r = request.form.get("km_rientro")
-            gasolio_finale = request.form.get("carburante")
-            data_r = get_now_it()
-            
-            # 1. GOOGLE SHEETS (11 COLONNE A-K)
-            try:
-                service = get_google_service()
-                riga = [
-                    c['data_p'], c.get('data_d', '-'), data_r,
-                    c['autista'], targa, "TIBURTINA",
-                    c.get('dest_intermedia', '-'),
-                    c['km_p'], c.get('km_d', '-'), km_r,
-                    f"Gasolio: {gasolio_finale}"
-                ]
-                service.spreadsheets().values().append(
-                    spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K",
-                    valueInputOption="USER_ENTERED", body={"values": [riga]}
-                ).execute()
-            except: pass
-
-            # 2. GENERAZIONE PDF
-            pdf_path = "/tmp/Report_Viaggio.pdf"
-            p = canvas.Canvas(pdf_path, pagesize=A4)
-            p.setFont("Helvetica-Bold", 18)
-            p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
-            
-            def draw_block(titolo, info, km, data, y_pos, color_bg):
-                p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
-                p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
-                p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
-                return y_pos - 80
-
-            y = 720
-            y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
-            y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
-            p.showPage(); p.save()
-
-            # 3. INVIO EMAIL
-            try:
-                msg = EmailMessage()
-                msg['Subject'] = f"Report: {c['autista']} - {targa}"
-                msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione terminata per {targa}.\nGasolio: {gasolio_finale}")
-                with open(pdf_path, 'rb') as f:
-                    msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                    smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
-                    smtp.send_message(msg)
-            except: pass
-
-            # Libera furgone e aggiorna tanica
-            furgoni[targa] = {
-                "stato": "Libero", "posizione": "Sede", "km": km_r, 
-                "autista": "-", "step": 0, "carburante": gasolio_finale
-            }
-            salva_stato(furgoni)
-            session.pop("targa_in_uso", None)
-            return send_file(pdf_path, as_attachment=True, download_name=f"Report_{targa}.pdf")
-
-        elif azione == "annulla":
-            if targa: furgoni[targa].update({"stato": "Libero", "step": 0})
-            salva_stato(furgoni)
-            session.pop("targa_in_uso", None)
-            return redirect(url_for('index'))
-
-    return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
-
-@app.route("/rifornimento", methods=["POST"])
-def rifornimento():
-    data = request.json
-    targa = data.get('targa'); litri_messi = float(data.get('litri', 0))
-    furgoni = carica_stato()
-    
-    mappa_litri = {"Vuoto": 5, "Semivuoto": 20, "Metà": 35, "Pieno": 70}
-    litri_attuali = mappa_litri.get(furgoni[targa].get('carburante', 'Vuoto'), 5)
-    nuovi_litri = litri_attuali + litri_messi
-    
-    if nuovi_litri >= CAPACITA_SERBATOIO * 0.85: nuovo_stato = "Pieno"
-    elif nuovi_litri >= CAPACITA_SERBATOIO * 0.45: nuovo_stato = "Metà"
-    elif nuovi_litri >= CAPACITA_SERBATOIO * 0.20: nuovo_stato = "Semivuoto"
-    else: nuovo_stato = "Vuoto"
-    
-    furgoni[targa]['carburante'] = nuovo_stato
-    salva_stato(furgoni)
-    
-    # Segna rifornimento su Sheets
-    try:
-        service = get_google_service()
-        riga = [get_now_it(), "-", "-", "RIFORNIMENTO", targa, "-", "-", "-", "-", "-", f"Messo: {litri_messi}L"]
-        service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
-    except: pass
-    return jsonify({"success": True})
-
-@app.route("/elabora_voce", methods=["POST"])
-def elabora_voce():
-    try:
-        testo = request.json.get("testo", "")
-        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
-        payload = {
-            "model": "llama-3.1-sonar-small-128k-online",
-            "messages": [
-                {"role": "system", "content": "Estrai dati logistica in JSON."},
-                {"role": "user", "content": testo}
-            ], "temperature": 0
+    <script>
+    // Funzione Rifornimento Automatica
+    function vaiARifornimento(targa) {
+        const litri = prompt("Quanti litri di gasolio hai messo nel furgone " + targa + "?");
+        if(litri && !isNaN(litri)) {
+            fetch('/rifornimento', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({targa: targa, litri: litri})
+            }).then(() => {
+                alert("Calcolo tanica aggiornato!");
+                location.reload();
+            });
         }
-        r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
-        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
-    except: return jsonify({"error": "IA offline"}), 500
+    }
 
-if __name__ == "__main__":
-    app.run()
+    // Navigatore Intelligente
+    function apriNavigatore() {
+        const d = document.getElementById('destinazione_field').value;
+        const database = {
+            "POLICLINICO UMBERTO 1": "Viale del Policlinico 155, Roma",
+            "SAN GIOVANNI": "Via dei Laterani 4, Roma",
+            "PTV": "Viale Oxford 81, Roma",
+            "VIMINALE": "Piazza del Viminale, Roma",
+            "VIA CAVOUR 5": "Via Cavour 5, Roma",
+            "VIA GENOVA": "Via Genova 1, Roma",
+            "AVEZZANO": "Via Giuseppe di Vittorio, Avezzano",
+            "AQUILA": "Via Lorenzo Natali 1, L'Aquila",
+            "SULMONA": "Viale Giuseppe Mazzini 100, Sulmona",
+            "PRATICA DI MARE": "Via Pratica di Mare 45, Pomezia",
+            "EUR ARCHIVIO DI STATO": "Piazzale degli Archivi 27, Roma"
+        };
+        const indirizzo = database[d] || d + ", Italia";
+        window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(indirizzo), "_blank");
+    }
+
+    // WhatsApp Rapido
+    function inviaWhatsApp() {
+        const km = document.getElementById('km_input').value;
+        const targa = "{{ targa_attiva }}";
+        const testo = "🚚 CSA LOGISTICA: Fine missione per il mezzo " + targa + ". Chilometri finali registrati: " + km;
+        window.open("https://wa.me/?text=" + encodeURIComponent(testo), "_blank");
+    }
+
+    // Riconoscimento Vocale
+    if ('webkitSpeechRecognition' in window) {
+        const recognition = new webkitSpeechRecognition();
+        recognition.lang = 'it-IT';
+        
+        document.getElementById('mic-btn').onclick = function(e) {
+            e.preventDefault();
+            recognition.start();
+            this.classList.add('recording');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            document.getElementById('mic-btn').classList.remove('recording');
+            const numeri = transcript.match(/\d+/g);
+            if(numeri) {
+                document.getElementById('km_input').value = numeri.join('');
+                const synth = window.speechSynthesis;
+                const utterance = new SpeechSynthesisUtterance("Registrati " + numeri.join('') + " chilometri");
+                utterance.lang = 'it-IT';
+                synth.speak(utterance);
+            }
+        };
+
+        recognition.onerror = function() {
+            document.getElementById('mic-btn').classList.remove('recording');
+        };
+    }
+    </script>
+</body>
+</html>
