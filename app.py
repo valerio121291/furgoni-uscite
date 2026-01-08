@@ -18,10 +18,10 @@ PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-# ID del tuo foglio Google aggiornato
+# ID del tuo foglio Google "Registro Furgoni 2026"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
-# Funzione Orario Roma
+# Funzione Orario Roma definitiva
 def get_now_it():
     tz_roma = pytz.timezone('Europe/Rome')
     return datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M")
@@ -31,10 +31,11 @@ try:
 except:
     kv = None
 
+# Stato iniziale con tanica gasolio impostata su Pieno
 STATO_INIZIALE = {
-    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0},
-    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0}
+    "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
+    "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
+    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"}
 }
 
 def get_google_service():
@@ -63,13 +64,14 @@ def index():
         targa = request.form.get("targa")
 
         if azione == "start":
-            furgoni[targa] = {
-                "targa": targa, "stato": "In Viaggio",
-                "posizione": request.form.get("partenza"),
+            furgoni[targa].update({
+                "stato": "In Viaggio",
+                "posizione": "TIBURTINA",
                 "km_p": request.form.get("km_partenza"),
                 "autista": request.form.get("autista"),
-                "step": 1, "data_p": get_now_it()
-            }
+                "step": 1, 
+                "data_p": get_now_it()
+            })
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -79,7 +81,8 @@ def index():
                 furgoni[targa].update({
                     "dest_intermedia": request.form.get("destinazione"),
                     "km_d": request.form.get("km_destinazione"),
-                    "step": 2, "data_d": get_now_it()
+                    "step": 2, 
+                    "data_d": get_now_it()
                 })
                 salva_stato(furgoni)
             return redirect(url_for('index'))
@@ -87,33 +90,32 @@ def index():
         elif azione == "stop":
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
+            nuovo_carburante = request.form.get("carburante") # Recupera stato tanica
             data_r = get_now_it()
             
-            # 1. GOOGLE SHEETS - MAPPATURA COLONNE RICHIESTE
+            # 1. GOOGLE SHEETS - MAPPATURA COLONNE A-K
             try:
                 service = get_google_service()
-                # Ordine: Partenza(Data), Arrivo(Data), Rientro(Data), Autista, Targa, Partenza(Luogo), Destinazione, KM Inizio, KM Metà, KM Fine, NOTE
                 riga = [
                     c['data_p'],            # Data/Ora Partenza
                     c.get('data_d', '-'),   # Arrivo Dest
                     data_r,                 # Rientro Base
                     c['autista'],           # Autista
                     targa,                  # Targa
-                    c['posizione'],         # Partenza (Luogo)
+                    "TIBURTINA",            # Partenza
                     c.get('dest_intermedia', '-'), # Destinazione
                     c['km_p'],              # KM Inizio
                     c.get('km_d', '-'),     # KM Metà
                     km_r,                   # KM Fine
-                    "Generato da IA Logistica" # NOTE IA
+                    f"Gasolio: {nuovo_carburante}" # NOTE IA
                 ]
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K",
                     valueInputOption="USER_ENTERED", body={"values": [riga]}
                 ).execute()
-            except Exception as e: 
-                print(f"Errore Sheets: {e}")
+            except: pass
 
-            # 2. PDF PROFESSIONALE
+            # 2. PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
@@ -126,18 +128,17 @@ def index():
                 return y_pos - 80
 
             y = 720
-            y = draw_block("1. PARTENZA", c['posizione'], c['km_p'], c['data_p'], y, colors.lightgrey)
+            y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
             y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO", "Tiburtina (Sede)", km_r, data_r, y, colors.lightgrey)
+            y = draw_block("3. RIENTRO", "TIBURTINA (Sede)", km_r, data_r, y, colors.lightgrey)
             p.showPage(); p.save()
 
-            # 3. EMAIL
+            # 3. INVIO EMAIL
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
-                msg['From'] = EMAIL_MITTENTE
-                msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione completata per {targa}.\nReport salvato su Google Sheets.")
+                msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
+                msg.set_content(f"Missione terminata.\nFurgone: {targa}\nGasolio: {nuovo_carburante}")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -145,7 +146,11 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
-            furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0}
+            # AGGIORNAMENTO STATO FINALE (Libera furgone e salva tanica)
+            furgoni[targa] = {
+                "stato": "Libero", "posizione": "Sede", "km": km_r, 
+                "autista": "-", "step": 0, "carburante": nuovo_carburante
+            }
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
             return send_file(pdf_path, as_attachment=True, download_name=f"Report_{targa}.pdf")
@@ -168,14 +173,12 @@ def elabora_voce():
             "messages": [
                 {"role": "system", "content": "Estrai dati logistica in JSON. Mappa: piccolo->GA087CH, medio->GX942TS, grande->GG862HC."},
                 {"role": "user", "content": testo}
-            ],
-            "temperature": 0
+            ], "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
         return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
-    except:
-        return jsonify({"error": "IA offline"}), 500
+    except: return jsonify({"error": "IA offline"}), 500
 
 if __name__ == "__main__":
     app.run()
