@@ -92,8 +92,26 @@
                     {% if corsa_attiva.step == 1 %}
                         <label>Destinazione</label>
                         <select name="destinazione" id="destinazione_field">
-                            <option value="Cliente">Cliente / Scarico</option>
-                            <option value="Sede">Rientro Sede</option>
+                            <option value="AQUILA">AQUILA</option>
+                            <option value="AVEZZANO">AVEZZANO</option>
+                            <option value="BIENTINA">BIENTINA</option>
+                            <option value="BIETTI">BIETTI</option>
+                            <option value="CASTEL DI SANGRO">CASTEL DI SANGRO</option>
+                            <option value="CASTRO PRETORIO">CASTRO PRETORIO</option>
+                            <option value="GIRO LIBERO">GIRO LIBERO</option>
+                            <option value="PESCARA">PESCARA</option>
+                            <option value="POLICLINICO UMBERTO 1">POLICLINICO UMBERTO 1</option>
+                            <option value="PRATICA DI MARE">PRATICA DI MARE</option>
+                            <option value="PTV">PTV</option>
+                            <option value="RIETI">RIETI</option>
+                            <option value="SAN GIOVANNI">SAN GIOVANNI</option>
+                            <option value="SETTEBAGNI">SETTEBAGNI</option>
+                            <option value="SPALLANZANI">SPALLANZANI</option>
+                            <option value="STUDIO LEGALE ABRIGANO">STUDIO LEGALE ABRIGANO</option>
+                            <option value="SULMONA">SULMONA</option>
+                            <option value="VIA CAVOUR 5">VIA CAVOUR 5</option>
+                            <option value="VIA GENOVA">VIA GENOVA</option>
+                            <option value="VIMINALE">VIMINALE</option>
                         </select>
                         <button type="button" class="btn btn-gps" onclick="rilevaPosizione('destinazione_field')">📍 AGGIUNGI GPS</button>
 
@@ -139,18 +157,22 @@
             const autisti = ["Valerio", "Daniele", "Costantino", "Simone", "Stefano"];
             const furgoni = { "piccolo": "GA087CH", "medio": "GX942TS", "grande": "GG862HC", "grosso": "GG862HC" };
 
-            autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
-            for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
+            if(document.getElementById('autista_select')) {
+                autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
+            }
+            if(document.getElementById('targa_select')) {
+                for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
+            }
             const n = testo.match(/\d+/g);
-            if(n) document.getElementById('km_input').value = n[0];
+            if(n && document.getElementById('km_input')) document.getElementById('km_input').value = n[0];
 
             fetch('/elabora_voce', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({testo: testo})
             }).then(res => res.json()).then(data => {
-                if(data.targa) document.getElementById('targa_select').value = data.targa;
-                if(data.km) document.getElementById('km_input').value = data.km;
+                if(data.targa && document.getElementById('targa_select')) document.getElementById('targa_select').value = data.targa;
+                if(data.km && document.getElementById('km_input')) document.getElementById('km_input').value = data.km;
                 voiceMsg.innerText = "Dati inseriti!";
             });
         };
