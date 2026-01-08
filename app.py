@@ -8,7 +8,7 @@ from upstash_redis import Redis
 from email.message import EmailMessage
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-import pytz #
+import pytz 
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
@@ -18,7 +18,8 @@ PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-SPREADSHEET_ID = 'IL_TUO_ID_FOGLIO_GOOGLE'
+# ID del tuo foglio Google aggiornato
+SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
 # Funzione Orario Roma
 def get_now_it():
@@ -88,15 +89,29 @@ def index():
             km_r = request.form.get("km_rientro")
             data_r = get_now_it()
             
-            # 1. GOOGLE SHEETS
+            # 1. GOOGLE SHEETS - MAPPATURA COLONNE RICHIESTE
             try:
                 service = get_google_service()
-                riga = [c['data_p'], data_r, c['autista'], targa, c['km_p'], c.get('km_d', '-'), km_r]
+                # Ordine: Partenza(Data), Arrivo(Data), Rientro(Data), Autista, Targa, Partenza(Luogo), Destinazione, KM Inizio, KM Metà, KM Fine, NOTE
+                riga = [
+                    c['data_p'],            # Data/Ora Partenza
+                    c.get('data_d', '-'),   # Arrivo Dest
+                    data_r,                 # Rientro Base
+                    c['autista'],           # Autista
+                    targa,                  # Targa
+                    c['posizione'],         # Partenza (Luogo)
+                    c.get('dest_intermedia', '-'), # Destinazione
+                    c['km_p'],              # KM Inizio
+                    c.get('km_d', '-'),     # KM Metà
+                    km_r,                   # KM Fine
+                    "Generato da IA Logistica" # NOTE IA
+                ]
                 service.spreadsheets().values().append(
-                    spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:G",
+                    spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K",
                     valueInputOption="USER_ENTERED", body={"values": [riga]}
                 ).execute()
-            except: pass
+            except Exception as e: 
+                print(f"Errore Sheets: {e}")
 
             # 2. PDF PROFESSIONALE
             pdf_path = "/tmp/Report_Viaggio.pdf"
@@ -122,7 +137,7 @@ def index():
                 msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
                 msg['From'] = EMAIL_MITTENTE
                 msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione completata per {targa}.")
+                msg.set_content(f"Missione completata per {targa}.\nReport salvato su Google Sheets.")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
