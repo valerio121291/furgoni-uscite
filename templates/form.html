@@ -3,26 +3,30 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Logistica CSA - Controllo Totale</title>
+    <title>Logistica CSA - Dashboard Totale</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root { --bg-dark: #0f172a; --card-dark: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --text-main: #f8fafc; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg-dark); margin: 0; padding-bottom: 50px; color: var(--text-main); }
         .header { background: #000; color: var(--accent); padding: 25px; text-align: center; font-weight: 800; border-bottom: 2px solid var(--accent); text-transform: uppercase; letter-spacing: 2px; }
         
-        /* Dashboard Targhe con Tanica */
+        /* Dashboard Targhe e Taniche */
         .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
-        .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; }
-        .truck-card.In.Viaggio { border: 2px solid var(--warning); }
+        .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; transition: 0.3s; }
+        .truck-card.In.Viaggio { border: 2px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.2); }
         .truck-card.Libero { border: 2px solid var(--success); opacity: 0.9; }
-        .fuel-indicator { margin-top: 8px; font-size: 1.2rem; }
-        .fuel-text { font-size: 0.6rem; text-transform: uppercase; display: block; margin-top: 2px; }
+        
+        .fuel-indicator { margin-top: 8px; font-size: 1.3rem; }
+        .fuel-text { font-size: 0.6rem; text-transform: uppercase; display: block; margin-top: 2px; font-weight: bold; }
+        .btn-refuel { background: rgba(34, 197, 94, 0.1); border: 1px solid var(--success); color: var(--success); padding: 8px; border-radius: 8px; font-size: 0.6rem; margin-top: 10px; cursor: pointer; width: 90%; font-weight: 800; }
 
+        /* Form e Input */
         .main-container { padding: 0 15px; }
         .card { background: var(--card-dark); padding: 25px; border-radius: 24px; border: 1px solid #334155; margin-top: 10px; }
         label { display: block; margin-top: 15px; font-weight: 600; font-size: 0.75rem; color: var(--accent); text-transform: uppercase; }
         select, input { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
         
+        /* Bottoni Operativi */
         .btn { width: 100%; padding: 20px; margin-top: 15px; border-radius: 15px; border: none; font-weight: 800; cursor: pointer; text-transform: uppercase; display: block; }
         .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
         .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
@@ -30,11 +34,12 @@
         .btn-wa { background: #25d366; color: white; margin-top: 10px; }
         .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
         
+        /* Sistema Vocale */
         .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
         .mic-btn { width: 65px; height: 65px; border-radius: 50%; background: var(--accent); border: 4px solid var(--card-dark); font-size: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; color: #0f172a; }
-        .mic-btn.recording { background: #danger; animation: pulse 1s infinite; color: white; }
+        .mic-btn.recording { background: var(--danger); animation: pulse 1s infinite; color: white; }
         
-        @keyframes pulse { 0% { transform: scale(1); } 70% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -53,22 +58,24 @@
                     <span class="fuel-text" style="color: var(--warning);">Metà</span>
                 {% elif info.carburante == "Semivuoto" %}
                     <i class="fas fa-gas-pump" style="color: #f97316;"></i>
-                    <span class="fuel-text" style="color: #f97316;">Semivuoto</span>
+                    <span class="fuel-text" style="color: #f97316;">Quasi Vuoto</span>
                 {% else %}
                     <i class="fas fa-gas-pump" style="color: var(--danger);"></i>
-                    <span class="fuel-text" style="color: var(--danger);">Vuoto</span>
+                    <span class="fuel-text" style="color: var(--danger);">Riserva</span>
                 {% endif %}
             </div>
-            <div style="font-size: 0.6rem; margin-top: 5px;">{{ info.stato }}</div>
+            <button type="button" class="btn-refuel" onclick="vaiARifornimento('{{ t }}')">
+                <i class="fas fa-gas-pump"></i> +LITRI
+            </button>
         </div>
         {% endfor %}
     </div>
 
     <div class="main-container">
         <div class="card">
-            <form method="post" id="form-logistica">
+            <form method="post">
                 {% if not targa_attiva %}
-                    <label>Seleziona Furgone</label>
+                    <label>Seleziona Mezzo</label>
                     <select name="targa" id="targa_select">
                         <option value="GA087CH">🚚 Piccolo (GA087CH)</option>
                         <option value="GX942TS">🚚🚚 Medio (GX942TS)</option>
@@ -84,19 +91,24 @@
                         <option value="Stefano">Stefano</option>
                     </select>
 
-                    <label>KM Iniziali</label>
-                    <input type="number" name="km_partenza" id="km_input" placeholder="Lettura cruscotto" required>
-                    <label>Partenza</label>
-                    <select name="partenza"><option value="Via Tiburtina 1072">Via Tiburtina 1072 (Base)</option></select>
+                    <label>KM Iniziali (Lettura Cruscotto)</label>
+                    <input type="number" name="km_partenza" id="km_input" placeholder="Es. 125400" required>
                     
                     <div class="voice-wrapper">
                         <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
+                        <p id="voice-msg" style="font-size: 0.7rem; margin-top: 10px; color: var(--accent);">DETTA I KM A VOCE</p>
                     </div>
+
                     <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
 
                 {% else %}
                     <input type="hidden" name="targa" value="{{ targa_attiva }}">
                     <input type="hidden" id="nome_autista" value="{{ corsa_attiva.autista }}">
+                    
+                    <div style="text-align: center; padding: 15px; border-radius: 15px; margin-bottom: 10px; border: 1px solid var(--warning);">
+                        <h3 style="color:var(--warning); margin:0;">{{ targa_attiva }} IN VIAGGIO</h3>
+                        <p style="font-size: 0.9rem;">Autista: {{ corsa_attiva.autista }}</p>
+                    </div>
 
                     {% if corsa_attiva.step == 1 %}
                         <label>Destinazione</label>
@@ -115,27 +127,30 @@
                             <option value="SPALLANZANI">Spallanzani</option>
                             <option value="BIETTI">Fondazione Bietti</option>
                             <option value="EUR ARCHIVIO DI STATO">EUR Archivio di Stato</option>
-                            <option value="GIRO LIBERO">Giro Libero</option>
+                            <option value="GIRO LIBERO">Giro Libero / Altro</option>
                         </select>
                         <button type="button" class="btn btn-nav" onclick="apriNavigatore()">🧭 APRI NAVIGATORE</button>
-                        <label>KM all'Arrivo</label>
-                        <input type="number" name="km_destinazione" id="km_input" required>
-                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
-                    {% else %}
-                        <label>KM Finali Rientro</label>
-                        <input type="number" name="km_rientro" id="km_input" required>
                         
-                        <label>Stato Gasolio al Rientro</label>
+                        <label>KM all'Arrivo</label>
+                        <input type="number" name="km_destinazione" id="km_input_dest" required>
+                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
+                    
+                    {% else %}
+                        <label>KM Finali (Rientro Sede)</label>
+                        <input type="number" name="km_rientro" id="km_input_fine" required>
+                        
+                        <label>Livello Gasolio al Rientro</label>
                         <select name="carburante">
                             <option value="Pieno">🟢 PIENO</option>
                             <option value="Metà">🟡 METÀ</option>
-                            <option value="Semivuoto">🟠 SEMIVUOTO</option>
-                            <option value="Vuoto">🔴 VUOTO</option>
+                            <option value="Semivuoto">🟠 QUASI VUOTO</option>
+                            <option value="Vuoto">🔴 RISERVA</option>
                         </select>
                         
-                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Viaggio</button>
+                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi e Invia Report</button>
                         <button type="button" class="btn btn-wa" onclick="inviaWhatsApp()">🟢 INVIA SU WHATSAPP</button>
                     {% endif %}
+                    
                     <button type="submit" name="azione" value="annulla" class="btn btn-annulla" formnovalidate>Indietro / Errore</button>
                 {% endif %}
             </form>
@@ -143,35 +158,78 @@
     </div>
 
     <script>
-    const coordinate = {
-        "POLICLINICO UMBERTO 1": "Viale del Policlinico 155, Roma",
-        "SAN GIOVANNI": "Via dei Laterani 4, Roma",
-        "PTV": "Viale Oxford 81, Roma",
-        "VIMINALE": "Piazza del Viminale, Roma",
-        "VIA CAVOUR 5": "Via Cavour 5, Roma",
-        "VIA GENOVA": "Via Genova 1, Roma",
-        "AVEZZANO": "Via Giuseppe di Vittorio, Avezzano",
-        "AQUILA": "Via Lorenzo Natali 1, L'Aquila",
-        "SULMONA": "Viale Giuseppe Mazzini 100, Sulmona",
-        "CASTEL DI SANGRO": "Via Sangrina 20, Castel di Sangro",
-        "PRATICA DI MARE": "Via Pratica di Mare 45, Pomezia",
-        "SPALLANZANI": "Via Portuense 292, Roma",
-        "BIETTI": "Via Santo Stefano Rotondo 6, Roma",
-        "EUR ARCHIVIO DI STATO": "Piazzale degli Archivi 27, Roma"
-    };
-
-    function apriNavigatore() {
-        const dest = document.getElementById('destinazione_field').value;
-        const addr = coordinate[dest];
-        if(addr) window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`, '_blank');
+    // FUNZIONE RIFORNIMENTO AUTOMATICO
+    function vaiARifornimento(targa) {
+        const litri = prompt("Quanti litri hai messo nel furgone " + targa + "?");
+        if(litri && !isNaN(litri)) {
+            fetch('/rifornimento', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({targa: targa, litri: parseFloat(litri)})
+            }).then(() => location.reload());
+        }
     }
 
+    // NAVIGATORE CON INDIRIZZI ESATTI
+    function apriNavigatore() {
+        const d = document.getElementById('destinazione_field').value;
+        const database = {
+            "POLICLINICO UMBERTO 1": "Viale del Policlinico 155, Roma",
+            "SAN GIOVANNI": "Via dei Laterani 4, Roma",
+            "PTV": "Viale Oxford 81, Roma",
+            "VIMINALE": "Piazza del Viminale, Roma",
+            "VIA CAVOUR 5": "Via Cavour 5, Roma",
+            "VIA GENOVA": "Via Genova 1, Roma",
+            "AVEZZANO": "Via Giuseppe di Vittorio, Avezzano",
+            "AQUILA": "Via Lorenzo Natali 1, L'Aquila",
+            "SULMONA": "Viale Giuseppe Mazzini 100, Sulmona",
+            "CASTEL DI SANGRO": "Via Sangrina 20, Castel di Sangro",
+            "PRATICA DI MARE": "Via Pratica di Mare 45, Pomezia",
+            "SPALLANZANI": "Via Portuense 292, Roma",
+            "BIETTI": "Via Santo Stefano Rotondo 6, Roma",
+            "EUR ARCHIVIO DI STATO": "Piazzale degli Archivi 27, Roma"
+        };
+        const indirizzo = database[d] || d;
+        window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(indirizzo), "_blank");
+    }
+
+    // WHATSAPP RAPIDO
     function inviaWhatsApp() {
+        const km = document.querySelector('input[name="km_rientro"]').value;
         const autista = document.getElementById('nome_autista').value;
         const targa = "{{ targa_attiva }}";
-        const km = document.getElementById('km_input').value;
         const msg = `Missione terminata: ${autista}, Furgone ${targa}, KM: ${km}`;
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+    }
+
+    // MICROFONO E RISPOSTA VOCALE
+    if ('webkitSpeechRecognition' in window) {
+        const recognition = new webkitSpeechRecognition();
+        recognition.lang = 'it-IT';
+        
+        document.getElementById('mic-btn').onclick = function(e) {
+            e.preventDefault();
+            recognition.start();
+            this.classList.add('recording');
+        };
+
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            document.getElementById('mic-btn').classList.remove('recording');
+            const numeri = transcript.match(/\d+/g);
+            if(numeri) {
+                const kmFinali = numeri.join('');
+                // Inserisce i km in qualsiasi campo visibile
+                const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
+                if(kmInput) kmInput.value = kmFinali;
+                
+                // L'app risponde
+                const synth = window.speechSynthesis;
+                const utterance = new SpeechSynthesisUtterance("Ricevuto " + kmFinali + " chilometri");
+                utterance.lang = 'it-IT';
+                synth.speak(utterance);
+            }
+        };
     }
     </script>
 </body>
