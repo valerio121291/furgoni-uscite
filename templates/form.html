@@ -24,7 +24,6 @@
         .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
         .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
         .btn-gps { background: #334155; color: var(--accent); font-size: 0.7rem; border: 1px dashed var(--accent); margin-top: 10px; padding: 10px; }
-        
         .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
         
         .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
@@ -121,16 +120,10 @@
                     {% else %}
                         <label>KM Finali Rientro</label>
                         <input type="number" name="km_rientro" id="km_input" required>
-                        
-                        <div class="voice-wrapper">
-                            <div class="mic-btn" id="mic-btn" type="button"><i class="fas fa-microphone"></i></div>
-                            <div id="voice-msg">DETTA I KM</div>
-                        </div>
-
                         <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Viaggio</button>
                     {% endif %}
                     
-                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla">Indietro / Errore</button>
+                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla" formnovalidate>Indietro / Errore</button>
                 {% endif %}
             </form>
         </div>
@@ -157,22 +150,18 @@
             const autisti = ["Valerio", "Daniele", "Costantino", "Simone", "Stefano"];
             const furgoni = { "piccolo": "GA087CH", "medio": "GX942TS", "grande": "GG862HC", "grosso": "GG862HC" };
 
-            if(document.getElementById('autista_select')) {
-                autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
-            }
-            if(document.getElementById('targa_select')) {
-                for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
-            }
+            autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
+            for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
             const n = testo.match(/\d+/g);
-            if(n && document.getElementById('km_input')) document.getElementById('km_input').value = n[0];
+            if(n) document.getElementById('km_input').value = n[0];
 
             fetch('/elabora_voce', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({testo: testo})
             }).then(res => res.json()).then(data => {
-                if(data.targa && document.getElementById('targa_select')) document.getElementById('targa_select').value = data.targa;
-                if(data.km && document.getElementById('km_input')) document.getElementById('km_input').value = data.km;
+                if(data.targa) document.getElementById('targa_select').value = data.targa;
+                if(data.km) document.getElementById('km_input').value = data.km;
                 voiceMsg.innerText = "Dati inseriti!";
             });
         };
