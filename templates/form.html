@@ -74,7 +74,7 @@
                     <button type="button" class="btn btn-gps" onclick="rilevaPosizione('partenza_field')">📍 AGGIUNGI GPS</button>
 
                     <div class="voice-wrapper">
-                        <div class="mic-btn" id="mic-btn" type="button"><i class="fas fa-microphone"></i></div>
+                        <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
                         <div id="voice-msg">TOCCA PER PARLARE</div>
                     </div>
 
@@ -116,14 +116,20 @@
 
                         <label>KM all'Arrivo</label>
                         <input type="number" name="km_destinazione" id="km_input" required>
+
+                        <div class="voice-wrapper">
+                            <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
+                            <div id="voice-msg">DETTA DESTINAZIONE E KM</div>
+                        </div>
+
                         <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
                     {% else %}
                         <label>KM Finali Rientro</label>
                         <input type="number" name="km_rientro" id="km_input" required>
                         
                         <div class="voice-wrapper">
-                            <div class="mic-btn" id="mic-btn" type="button"><i class="fas fa-microphone"></i></div>
-                            <div id="voice-msg">DETTA I KM</div>
+                            <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
+                            <div id="voice-msg">DETTA I KM FINALI</div>
                         </div>
 
                         <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi Viaggio</button>
@@ -136,46 +142,53 @@
     </div>
 
     <script>
-    const micBtn = document.getElementById('mic-btn');
+    // Seleziona tutti i microfoni presenti nella pagina
+    const micButtons = document.querySelectorAll('.mic-btn');
     const voiceMsg = document.getElementById('voice-msg');
 
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
         
-        micBtn.onclick = (e) => { 
-            e.preventDefault(); 
-            recognition.start(); 
-            micBtn.classList.add('recording'); 
-        };
+        micButtons.forEach(btn => {
+            btn.onclick = (e) => { 
+                e.preventDefault(); 
+                recognition.start(); 
+                btn.classList.add('recording'); 
+                voiceMsg.innerText = "Ascoltando...";
+            };
+        });
 
         recognition.onresult = (event) => {
             const testo = event.results[0][0].transcript.toLowerCase();
-            micBtn.classList.remove('recording');
+            micButtons.forEach(btn => btn.classList.remove('recording'));
             
             const autisti = ["Valerio", "Daniele", "Costantino", "Simone", "Stefano"];
             const furgoni = { "piccolo": "GA087CH", "medio": "GX942TS", "grande": "GG862HC", "grosso": "GG862HC" };
+            const destinazioni = ["AQUILA", "AVEZZANO", "BIENTINA", "BIETTI", "CASTEL DI SANGRO", "CASTRO PRETORIO", "GIRO LIBERO", "PESCARA", "POLICLINICO UMBERTO 1", "PRATICA DI MARE", "PTV", "RIETI", "SAN GIOVANNI", "SETTEBAGNI", "SPALLANZANI", "STUDIO LEGALE ABRIGANO", "SULMONA", "VIA CAVOUR 5", "VIA GENOVA", "VIMINALE"];
 
-            // Gestione Autista e Targa
-            autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
-            for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
+            // Riconoscimento Autista
+            if(document.getElementById('autista_select')) {
+                autisti.forEach(a => { if(testo.includes(a.toLowerCase())) document.getElementById('autista_select').value = a; });
+            }
             
-            // --- FIX KM: UNISCE TUTTI I NUMERI SENTITI ---
+            // Riconoscimento Targa
+            if(document.getElementById('targa_select')) {
+                for (let k in furgoni) { if(testo.includes(k)) document.getElementById('targa_select').value = furgoni[k]; }
+            }
+
+            // Riconoscimento Destinazione
+            if(document.getElementById('destinazione_field')) {
+                destinazioni.forEach(d => { if(testo.includes(d.toLowerCase())) document.getElementById('destinazione_field').value = d; });
+            }
+            
+            // Riconoscimento KM (Unisce i numeri pronunciati)
             const n = testo.match(/\d+/g);
-            if(n) {
-                // Unisce i pezzi, es: "13" e "338" diventa "13338"
+            if(n && document.getElementById('km_input')) {
                 document.getElementById('km_input').value = n.join('');
             }
 
-            fetch('/elabora_voce', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({testo: testo})
-            }).then(res => res.json()).then(data => {
-                if(data.targa && document.getElementById('targa_select')) document.getElementById('targa_select').value = data.targa;
-                if(data.km && document.getElementById('km_input')) document.getElementById('km_input').value = data.km;
-                voiceMsg.innerText = "Dati inseriti!";
-            });
+            voiceMsg.innerText = "Dati inseriti!";
         };
     }
 
