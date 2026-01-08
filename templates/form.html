@@ -25,7 +25,6 @@
         .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
         .btn-gps { background: #334155; color: var(--accent); font-size: 0.7rem; border: 1px dashed var(--accent); margin-top: 10px; padding: 10px; }
         
-        /* Stile per il tasto Indietro */
         .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
         
         .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
@@ -91,6 +90,13 @@
                     <input type="hidden" name="targa" value="{{ targa_attiva }}">
 
                     {% if corsa_attiva.step == 1 %}
+                        <label>Destinazione</label>
+                        <select name="destinazione" id="destinazione_field">
+                            <option value="Cliente">Cliente / Scarico</option>
+                            <option value="Sede">Rientro Sede</option>
+                        </select>
+                        <button type="button" class="btn btn-gps" onclick="rilevaPosizione('destinazione_field')">📍 AGGIUNGI GPS</button>
+
                         <label>KM all'Arrivo</label>
                         <input type="number" name="km_destinazione" id="km_input" required>
                         <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
