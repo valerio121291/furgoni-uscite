@@ -18,10 +18,10 @@ PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-# ID del tuo foglio Google "Registro Furgoni 2026"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
+CAPACITA_SERBATOIO = 70 # Litri per furgone
 
-# Funzione Orario Roma definitiva
+# Funzione Orario Roma
 def get_now_it():
     tz_roma = pytz.timezone('Europe/Rome')
     return datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M")
@@ -31,7 +31,6 @@ try:
 except:
     kv = None
 
-# Stato iniziale con tanica gasolio impostata su Pieno
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
@@ -90,24 +89,18 @@ def index():
         elif azione == "stop":
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
-            nuovo_carburante = request.form.get("carburante") # Recupera stato tanica
+            gasolio_finale = request.form.get("carburante")
             data_r = get_now_it()
             
-            # 1. GOOGLE SHEETS - MAPPATURA COLONNE A-K
+            # 1. GOOGLE SHEETS (11 COLONNE A-K)
             try:
                 service = get_google_service()
                 riga = [
-                    c['data_p'],            # Data/Ora Partenza
-                    c.get('data_d', '-'),   # Arrivo Dest
-                    data_r,                 # Rientro Base
-                    c['autista'],           # Autista
-                    targa,                  # Targa
-                    "TIBURTINA",            # Partenza
-                    c.get('dest_intermedia', '-'), # Destinazione
-                    c['km_p'],              # KM Inizio
-                    c.get('km_d', '-'),     # KM Metà
-                    km_r,                   # KM Fine
-                    f"Gasolio: {nuovo_carburante}" # NOTE IA
+                    c['data_p'], c.get('data_d', '-'), data_r,
+                    c['autista'], targa, "TIBURTINA",
+                    c.get('dest_intermedia', '-'),
+                    c['km_p'], c.get('km_d', '-'), km_r,
+                    f"Gasolio: {gasolio_finale}"
                 ]
                 service.spreadsheets().values().append(
                     spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K",
@@ -115,7 +108,7 @@ def index():
                 ).execute()
             except: pass
 
-            # 2. PDF
+            # 2. GENERAZIONE PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             p = canvas.Canvas(pdf_path, pagesize=A4)
             p.setFont("Helvetica-Bold", 18)
@@ -130,15 +123,15 @@ def index():
             y = 720
             y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
             y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-            y = draw_block("3. RIENTRO", "TIBURTINA (Sede)", km_r, data_r, y, colors.lightgrey)
+            y = draw_block("3. RIENTRO", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
             p.showPage(); p.save()
 
             # 3. INVIO EMAIL
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
+                msg['Subject'] = f"Report: {c['autista']} - {targa}"
                 msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione terminata.\nFurgone: {targa}\nGasolio: {nuovo_carburante}")
+                msg.set_content(f"Missione terminata per {targa}.\nGasolio: {gasolio_finale}")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -146,10 +139,10 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
-            # AGGIORNAMENTO STATO FINALE (Libera furgone e salva tanica)
+            # Libera furgone e aggiorna tanica
             furgoni[targa] = {
                 "stato": "Libero", "posizione": "Sede", "km": km_r, 
-                "autista": "-", "step": 0, "carburante": nuovo_carburante
+                "autista": "-", "step": 0, "carburante": gasolio_finale
             }
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -163,6 +156,32 @@ def index():
 
     return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
 
+@app.route("/rifornimento", methods=["POST"])
+def rifornimento():
+    data = request.json
+    targa = data.get('targa'); litri_messi = float(data.get('litri', 0))
+    furgoni = carica_stato()
+    
+    mappa_litri = {"Vuoto": 5, "Semivuoto": 20, "Metà": 35, "Pieno": 70}
+    litri_attuali = mappa_litri.get(furgoni[targa].get('carburante', 'Vuoto'), 5)
+    nuovi_litri = litri_attuali + litri_messi
+    
+    if nuovi_litri >= CAPACITA_SERBATOIO * 0.85: nuovo_stato = "Pieno"
+    elif nuovi_litri >= CAPACITA_SERBATOIO * 0.45: nuovo_stato = "Metà"
+    elif nuovi_litri >= CAPACITA_SERBATOIO * 0.20: nuovo_stato = "Semivuoto"
+    else: nuovo_stato = "Vuoto"
+    
+    furgoni[targa]['carburante'] = nuovo_stato
+    salva_stato(furgoni)
+    
+    # Segna rifornimento su Sheets
+    try:
+        service = get_google_service()
+        riga = [get_now_it(), "-", "-", "RIFORNIMENTO", targa, "-", "-", "-", "-", "-", f"Messo: {litri_messi}L"]
+        service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
+    except: pass
+    return jsonify({"success": True})
+
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
     try:
@@ -171,7 +190,7 @@ def elabora_voce():
         payload = {
             "model": "llama-3.1-sonar-small-128k-online",
             "messages": [
-                {"role": "system", "content": "Estrai dati logistica in JSON. Mappa: piccolo->GA087CH, medio->GX942TS, grande->GG862HC."},
+                {"role": "system", "content": "Estrai dati logistica in JSON."},
                 {"role": "user", "content": testo}
             ], "temperature": 0
         }
