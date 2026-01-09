@@ -159,12 +159,11 @@ def index():
 def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
-        furgoni = carica_stato()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": f"Sei l'Assistente CSA. Dati flotta: {json.dumps(furgoni)}. Rispondi in JSON. Se l'utente detta dati operativi (targa, nomi, km), estrai JSON: {{\"targa\": \"...\", \"autisti\": [], \"km\": 0}}. Se l'utente fa domande su ospedali o procedure, rispondi in JSON: {{\"risposta\": \"...\"}}."}, 
+                {"role": "system", "content": "Sei l'Assistente CSA. Se l'utente fa una domanda, rispondi con una frase breve in JSON: {\"risposta\": \"...\"}. Se detta dati, estrai JSON: {\"targa\": \"...\", \"autisti\": [], \"km\": 0}."}, 
                 {"role": "user", "content": testo}
             ]
         }
