@@ -11,7 +11,6 @@ from googleapiclient.discovery import build
 import pytz 
 
 app = Flask(__name__)
-# Chiave segreta per le sessioni
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
@@ -20,9 +19,7 @@ EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
-CAPACITA_SERBATOIO = 70 
 
-# Funzione Orario Roma
 def get_now_it():
     try:
         tz_roma = pytz.timezone('Europe/Rome')
@@ -30,7 +27,6 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Connessione Redis (Upstash)
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -38,7 +34,6 @@ try:
 except:
     kv = None
 
-# Stato iniziale con blocco KM Grande (GG862HC)
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
@@ -58,7 +53,6 @@ def carica_stato():
     if kv is None: return STATO_INIZIALE
     try:
         stato = kv.get("stato_furgoni")
-        if not stato: return STATO_INIZIALE
         return stato if isinstance(stato, dict) else json.loads(stato)
     except: return STATO_INIZIALE
 
@@ -78,29 +72,18 @@ def index():
         targa = request.form.get("targa")
 
         if azione == "start" and targa in furgoni:
-            # Gestione Equipaggio Multiplo
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
-            
             km_p = int(request.form.get("km_partenza", 0))
             if targa == "GG862HC" and km_p < 44627:
-                return "Errore: I chilometri del furgone GRANDE non possono essere inferiori a 44.627!", 400
-
-            furgoni[targa].update({
-                "stato": "In Viaggio", "posizione": "TIBURTINA",
-                "km_p": km_p, "autista": equipaggio,
-                "step": 1, "data_p": get_now_it()
-            })
+                return "Errore: KM minimi 44.627", 400
+            furgoni[targa].update({"stato": "In Viaggio", "km_p": km_p, "autista": equipaggio, "step": 1, "data_p": get_now_it()})
             session["targa_in_uso"] = targa
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
         elif azione == "arrivo_dest" and targa:
-            furgoni[targa].update({
-                "dest_intermedia": request.form.get("destinazione"),
-                "km_d": request.form.get("km_destinazione"),
-                "step": 2, "data_d": get_now_it()
-            })
+            furgoni[targa].update({"dest_intermedia": request.form.get("destinazione"), "km_d": request.form.get("km_destinazione"), "step": 2, "data_d": get_now_it()})
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
@@ -108,57 +91,20 @@ def index():
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             gasolio = request.form.get("carburante")
-            data_r = get_now_it()
-            
-            # 1. Scrittura su Google Sheets
+            # Logica Google Sheets
             try:
                 service = get_google_service()
                 if service:
-                    riga = [c['data_p'], c.get('data_d','-'), data_r, c['autista'], targa, "TIBURTINA", c.get('dest_intermedia','-'), c['km_p'], c.get('km_d','-'), km_r, f"Gasolio: {gasolio}"]
+                    riga = [c['data_p'], c.get('data_d','-'), get_now_it(), c['autista'], targa, "Sede", c.get('dest_intermedia','-'), c['km_p'], c.get('km_d','-'), km_r, gasolio]
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
-
-            # 2. Generazione PDF
-            pdf_path = "/tmp/Report_Viaggio.pdf"
-            try:
-                p = canvas.Canvas(pdf_path, pagesize=A4)
-                p.setFont("Helvetica-Bold", 18)
-                p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT MISSIONE")
-                p.setFont("Helvetica", 11)
-                p.drawCentredString(300, 780, f"Equipaggio: {c['autista']}")
-                
-                def draw_block(titolo, info, km, data, y_pos, color_bg):
-                    p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
-                    p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
-                    p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
-                    return y_pos - 80
-                y = 700
-                y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
-                y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-                y = draw_block("3. RIENTRO IN SEDE", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
-                p.showPage(); p.save()
-            except: pass
-
-            # 3. Invio Email
-            try:
-                msg = EmailMessage()
-                msg['Subject'] = f"Report: {targa} - {c['autista']}"
-                msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione chiusa.\nEquipaggio: {c['autista']}\nKM finali: {km_r}")
-                with open(pdf_path, 'rb') as f:
-                    msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                    smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD); smtp.send_message(msg)
-            except: pass
-
-            # 4. Reset Stato
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
-            return send_file(pdf_path, as_attachment=True, download_name=f"Report_{targa}.pdf")
+            return redirect(url_for('index'))
 
         elif azione == "annulla":
-            if targa and targa in furgoni: furgoni[targa].update({"stato": "Libero", "step": 0})
+            if targa: furgoni[targa].update({"stato": "Libero", "step": 0})
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
             return redirect(url_for('index'))
@@ -170,26 +116,21 @@ def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
-        
-        # System prompt specifico per il Robottino CSA
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": "Sei l'Assistente CSA. Se l'utente ti fa una domanda, rispondi in modo breve e amichevole. Restituisci SEMPRE un JSON con questa struttura: {'risposta': 'testo della tua risposta'}"}, 
+                {"role": "system", "content": "Sei l'assistente CSA. Rispondi in modo amichevole e breve (max 20 parole)."}, 
                 {"role": "user", "content": testo}
             ],
             "temperature": 0.2
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        
-        res_content = r.json()['choices'][0]['message']['content']
-        match = re.search(r'\{.*\}', res_content, re.DOTALL)
-        if match:
-            return jsonify(json.loads(match.group()))
-        
-        return jsonify({"risposta": res_content})
+        risposta_ia = r.json()['choices'][0]['message']['content']
+        # Inviamo la risposta pulita al frontend
+        return jsonify({"risposta": risposta_ia})
     except Exception as e:
-        return jsonify({"risposta": "Non riesco a connettermi al cervello centrale."}), 500
+        print(f"Errore: {e}")
+        return jsonify({"risposta": "Al momento ho un problema di connessione, riprova tra poco."}), 500
 
 if __name__ == "__main__":
     app.run()
