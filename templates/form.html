@@ -9,15 +9,19 @@
         :root { --bg-dark: #0f172a; --card-dark: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --text-main: #f8fafc; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg-dark); margin: 0; padding-bottom: 50px; color: var(--text-main); }
         .header { background: #000; color: var(--accent); padding: 25px; text-align: center; font-weight: 800; border-bottom: 2px solid var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        
         .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
         .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; }
         .truck-card.In.Viaggio { border: 2px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.2); }
         .truck-card.Libero { border: 2px solid var(--success); }
+        
         .main-container { padding: 0 15px; }
         .card { background: var(--card-dark); padding: 25px; border-radius: 24px; border: 1px solid #334155; margin-top: 10px; }
         label { display: block; margin-top: 15px; font-weight: 600; font-size: 0.75rem; color: var(--accent); text-transform: uppercase; }
+        
         select[multiple] { height: 120px; border: 1px solid var(--accent); }
         select, input { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
+        
         .btn { width: 100%; padding: 20px; margin-top: 15px; border-radius: 15px; border: none; font-weight: 800; cursor: pointer; text-transform: uppercase; display: block; }
         .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
         .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
@@ -70,7 +74,7 @@
                         <option value="Stefano">Stefano</option>
                     </select>
 
-                    <label>KM Partenza</label>
+                    <label>KM Partenza (Min 44627 per il grosso)</label>
                     <input type="number" name="km_partenza" id="km_input" required>
                     
                     <div class="voice-controls">
@@ -82,7 +86,7 @@
                     <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
 
                 {% else %}
-                    <input type="hidden" name="targa" value="{{ targa_attiva }}">
+                    <input type="hidden" name="targa" id="targa_val" value="{{ targa_attiva }}">
                     <div style="text-align: center; padding: 15px; border-radius: 15px; margin-bottom: 10px; border: 1px solid var(--warning);">
                         <h3 style="color:var(--warning); margin:0;">{{ targa_attiva }}</h3>
                         <p style="font-size: 0.8rem;">Equipaggio: {{ corsa_attiva.autista }}</p>
@@ -167,6 +171,7 @@
             if(window.activeBtn) window.activeBtn.classList.remove('recording');
             
             if (isBotMode) {
+                // IL ROBOT PARLA (Chiamata API)
                 fetch('/elabora_voce', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -174,11 +179,12 @@
                 }).then(r => r.json()).then(data => {
                     if(data.risposta) {
                         const utter = new SpeechSynthesisUtterance(data.risposta);
-                        utter.lang = 'it-IT'; window.speechSynthesis.speak(utter);
+                        utter.lang = 'it-IT';
+                        window.speechSynthesis.speak(utter);
                     }
                 });
             } else {
-                // LOGICA ORIGINALE INSERIMENTO DATI
+                // MICROFONO SCRIVE DATI (Logica Locale Ibrida)
                 const n = transcript.match(/\d+/g);
                 const kmInp = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
                 if(n && kmInp) kmInp.value = n.join('');
@@ -198,9 +204,14 @@
                 if(transcript.includes("medio")) document.getElementById('targa_select').value = "GX942TS";
                 if(transcript.includes("grande") || transcript.includes("grosso")) {
                     document.getElementById('targa_select').value = "GG862HC";
+                    // Blocco sicurezza per il furgone grande
                     const kmVal = document.getElementById('km_input') ? document.getElementById('km_input').value : 0;
-                    if(kmVal && parseInt(kmVal) < 44627) alert("Errore KM!");
+                    if(kmVal && parseInt(kmVal) < 44627) alert("Attenzione: KM minimi per il grosso sono 44.627!");
                 }
+                
+                // Feedback vocale semplice per inserimento dati
+                const synth = window.speechSynthesis;
+                synth.speak(new SpeechSynthesisUtterance("Dati inseriti"));
             }
         };
     }
