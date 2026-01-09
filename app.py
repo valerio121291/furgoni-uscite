@@ -21,6 +21,7 @@ EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 CAPACITA_SERBATOIO = 70 
 
+# Funzione Orario Roma
 def get_now_it():
     try:
         tz_roma = pytz.timezone('Europe/Rome')
@@ -28,6 +29,7 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
+# Inizializzazione Redis sicura (Upstash)
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -35,7 +37,7 @@ try:
 except:
     kv = None
 
-# KM INIZIALI AGGIORNATI (Furgone Grande: 44627)
+# STATO INIZIALE CON KM REALI (Grande: 44627)
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
@@ -76,14 +78,13 @@ def index():
 
         if azione == "start" and targa in furgoni:
             km_p = int(request.form.get("km_partenza", 0))
-            # PROTEZIONE KM: non permette di scalare i KM
+            # Blocca se i KM sono inferiori all'ultimo dato salvato
             if km_p < int(furgoni[targa]['km']):
-                return "Errore: I KM non possono essere inferiori all'ultima registrazione!", 400
+                return "Errore: KM inferiori all'ultimo rientro!", 400
 
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
-                "km_p": km_p,
-                "autista": request.form.get("autista"),
+                "km_p": km_p, "autista": request.form.get("autista"),
                 "step": 1, "data_p": get_now_it()
             })
             session["targa_in_uso"] = targa
@@ -105,7 +106,7 @@ def index():
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
             
-            # 1. Google Sheets
+            # 1. Scrittura su Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -113,30 +114,33 @@ def index():
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
-            # 2. PDF Report
+            # 2. Generazione PDF con ReportLab
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
                 p.setFont("Helvetica-Bold", 18)
                 p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT VIAGGIO")
+                
                 def draw_block(titolo, info, km, data, y_pos, color_bg):
                     p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
                     p.setFillColor(colors.black); p.setFont("Helvetica-Bold", 11); p.drawString(60, y_pos-20, titolo)
-                    p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
+                    p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}")
+                    p.drawString(60, y_pos-50, f"KM: {km}")
                     return y_pos - 80
+
                 y = 720
                 y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
                 y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
-                y = draw_block("3. RIENTRO", "TIBURTINA (Sede)", km_r, data_r, y, colors.lightgrey)
+                y = draw_block("3. RIENTRO IN SEDE", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
                 p.showPage(); p.save()
             except: pass
 
-            # 3. Email
+            # 3. Invio Email con Allegato
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
                 msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione terminata.\nFurgone: {targa}\nGasolio: {gasolio}")
+                msg.set_content(f"Missione terminata per {targa}.\nAutista: {c['autista']}\nGasolio: {gasolio}\nKM finali: {km_r}")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -144,6 +148,7 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
+            # 4. Reset Stato Furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -167,10 +172,12 @@ def rifornimento():
         mappa_litri = {"Vuoto": 5, "Semivuoto": 20, "Metà": 35, "Pieno": 70}
         litri_attuali = mappa_litri.get(furgoni[targa].get('carburante', 'Vuoto'), 5)
         nuovi_litri = litri_attuali + litri_messi
+        
         if nuovi_litri >= CAPACITA_SERBATOIO * 0.85: nuovo = "Pieno"
         elif nuovi_litri >= CAPACITA_SERBATOIO * 0.45: nuovo = "Metà"
         elif nuovi_litri >= CAPACITA_SERBATOIO * 0.20: nuovo = "Semivuoto"
         else: nuovo = "Vuoto"
+        
         furgoni[targa]['carburante'] = nuovo
         salva_stato(furgoni)
         return jsonify({"success": True})
@@ -181,21 +188,20 @@ def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
-        # ISTRUZIONI IA POTENZIATE PER AUTISTA E FURGONE
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": """Estrai dati logistica in JSON. 
-                Mappa i furgoni: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'->GG862HC. 
-                Mappa gli autisti: Valerio, Daniele, Costantino, Simone, Stefano. 
-                Esempio: {"targa": "GG862HC", "autista": "Valerio", "km": 44627}"""}, 
+                {"role": "system", "content": """Rispondi SOLO in JSON. 
+                Mappa mezzi: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'/'grosso'->GG862HC. 
+                Mappa nomi: Valerio, Daniele, Costantino, Simone, Stefano. 
+                Estrai km numerici. Formato: {"targa": "...", "autista": "...", "km": "..."}"""}, 
                 {"role": "user", "content": testo}
             ], 
             "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
-        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
+        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 400
     except: return jsonify({"error": "IA offline"}), 500
 
 if __name__ == "__main__":
