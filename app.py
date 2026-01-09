@@ -74,10 +74,8 @@ def index():
         targa = request.form.get("targa")
 
         if azione == "start" and targa in furgoni:
-            # GESTIONE EQUIPAGGIO MULTIPLO
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
-            
             km_p = int(request.form.get("km_partenza", 0))
             if targa == "GG862HC" and km_p < 44627:
                 return "Errore: KM minimi 44.627", 400
@@ -118,7 +116,7 @@ def index():
                 p = canvas.Canvas(pdf_path, pagesize=A4)
                 p.setFont("Helvetica-Bold", 18)
                 p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT MISSIONE")
-                p.setFont("Helvetica", 12)
+                p.setFont("Helvetica", 11)
                 p.drawCentredString(300, 780, f"Equipaggio: {c['autista']}")
                 
                 def draw_block(titolo, info, km, data, y_pos, color_bg):
@@ -135,9 +133,9 @@ def index():
 
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Report Missione: {targa} - {c['autista']}"
+                msg['Subject'] = f"Report: {targa} - {c['autista']}"
                 msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione chiusa.\nMezzo: {targa}\nEquipaggio: {c['autista']}\nKM: {km_r}")
+                msg.set_content(f"Missione chiusa.\nEquipaggio: {c['autista']}\nKM: {km_r}")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -176,7 +174,7 @@ def elabora_voce():
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": "Rispondi in JSON. Estrai nomi autisti in lista 'autisti', targa mezzo, e km."}, 
+                {"role": "system", "content": "Estrai in JSON: targa (GA087CH, GX942TS, GG862HC), autisti (lista nomi), km (numero)."}, 
                 {"role": "user", "content": testo}
             ]
         }
