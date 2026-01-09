@@ -203,7 +203,8 @@
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        
+        recognition.continuous = false;
+
         document.getElementById('mic-btn').onclick = function(e) {
             e.preventDefault();
             recognition.start();
@@ -211,36 +212,47 @@
         };
 
         recognition.onresult = function(event) {
-            const transcript = event.results[0][0].transcript;
+            const transcript = event.results[0][0].transcript.toLowerCase();
             document.getElementById('mic-btn').classList.remove('recording');
             
-            // Chiamata all'IA per elaborare la frase
+            // 1. ESTRAZIONE IMMEDIATA DEI NUMERI (KM)
+            const numeri = transcript.match(/\d+/g);
+            const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
+            
+            if(numeri && kmInput) {
+                const valoreKm = numeri.join('');
+                // Controllo blocco sicurezza per furgone grande
+                const targaInUso = document.getElementById('targa_select') ? document.getElementById('targa_select').value : "{{ targa_attiva }}";
+                
+                if((targaInUso === "GG862HC" || transcript.includes("grande") || transcript.includes("grosso")) && parseInt(valoreKm) < 44627) {
+                    alert("ATTENZIONE: I chilometri non possono essere inferiori a 44.627!");
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance("Errore chilometri troppo bassi"));
+                } else {
+                    kmInput.value = valoreKm;
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance("Ricevuto " + valoreKm));
+                }
+            }
+
+            // 2. CHIAMATA ALL'IA PER AUTISTA E MEZZO (In background)
             fetch('/elabora_voce', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({testo: transcript})
             })
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                // Autocompilazione Targa
-                if(data.targa) document.getElementById('targa_select').value = data.targa;
-                // Autocompilazione Autista
-                if(data.autista) document.getElementById('autista_select').value = data.autista;
-                // Gestione KM con blocco sicurezza
-                if(data.km) {
-                    const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
-                    
-                    // Blocco specifico per furgone GRANDE (GG862HC)
-                    if(data.targa === "GG862HC" && parseInt(data.km) < 44627) {
-                        alert("ATTENZIONE: I chilometri non possono essere inferiori a 44.627!");
-                        window.speechSynthesis.speak(new SpeechSynthesisUtterance("Errore. Chilometri troppo bassi."));
-                    } else if(kmInput) {
-                        kmInput.value = data.km;
-                        window.speechSynthesis.speak(new SpeechSynthesisUtterance("Ricevuto " + data.km + " chilometri"));
-                    }
+                if(data.targa && document.getElementById('targa_select')) {
+                    document.getElementById('targa_select').value = data.targa;
                 }
+                if(data.autista && document.getElementById('autista_select')) {
+                    document.getElementById('autista_select').value = data.autista;
+                }
+            }).catch(err => {
+                console.log("IA non ha risposto, ma i numeri sono stati presi.");
             });
         };
+
+        recognition.onerror = () => document.getElementById('mic-btn').classList.remove('recording');
     }
     </script>
 </body>
