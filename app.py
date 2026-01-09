@@ -11,17 +11,18 @@ from googleapiclient.discovery import build
 import pytz 
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
+# Chiave segreta per gestire le sessioni (necessaria per Flask)
+app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_2026_valerio")
 
 # --- CONFIGURAZIONE ---
 PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
-EMAIL_PASSWORD = "ogteueppdqmtpcvg"
+EMAIL_PASSWORD = "ogteueppdqmtpcvg"  # Password app di Gmail
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 CAPACITA_SERBATOIO = 70 
 
-# Funzione Orario Roma
+# Funzione per l'orario italiano
 def get_now_it():
     try:
         tz_roma = pytz.timezone('Europe/Rome')
@@ -29,7 +30,7 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Inizializzazione Redis sicura (Upstash)
+# Inizializzazione Redis (Upstash) per salvare lo stato su Vercel
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -37,7 +38,7 @@ try:
 except:
     kv = None
 
-# STATO INIZIALE CON KM REALI (Grande: 44627)
+# Stato iniziale con blocco KM Grande (GG862HC)
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
@@ -58,7 +59,8 @@ def carica_stato():
     try:
         stato = kv.get("stato_furgoni")
         if not stato: return STATO_INIZIALE
-        return stato if isinstance(stato, dict) else json.loads(stato)
+        # Se è una stringa (JSON), decodifica, altrimenti restituisci così com'è
+        return json.loads(stato) if isinstance(stato, str) else stato
     except: return STATO_INIZIALE
 
 def salva_stato(stato):
@@ -76,11 +78,13 @@ def index():
         azione = request.form.get("azione")
         targa = request.form.get("targa")
 
+        # 1. INIZIO MISSIONE
         if azione == "start" and targa in furgoni:
             km_p = int(request.form.get("km_partenza", 0))
-            # Blocca se i KM sono inferiori all'ultimo dato salvato
-            if km_p < int(furgoni[targa]['km']):
-                return "Errore: KM inferiori all'ultimo rientro!", 400
+            
+            # Controllo KM minimi per il furgone Grande
+            if targa == "GG862HC" and km_p < 44627:
+                return "Errore: I chilometri non possono essere inferiori a 44.627 per questo mezzo.", 400
 
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
@@ -91,6 +95,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
+        # 2. ARRIVO DESTINAZIONE
         elif azione == "arrivo_dest" and targa:
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -100,13 +105,14 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
+        # 3. CHIUSURA E REPORT
         elif azione == "stop" and targa:
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
             
-            # 1. Scrittura su Google Sheets
+            # Scrittura su Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -114,7 +120,7 @@ def index():
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
-            # 2. Generazione PDF con ReportLab
+            # Creazione PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
@@ -135,10 +141,10 @@ def index():
                 p.showPage(); p.save()
             except: pass
 
-            # 3. Invio Email con Allegato
+            # Invio Email
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
+                msg['Subject'] = f"Report Viaggio: {c['autista']} - {targa}"
                 msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
                 msg.set_content(f"Missione terminata per {targa}.\nAutista: {c['autista']}\nGasolio: {gasolio}\nKM finali: {km_r}")
                 with open(pdf_path, 'rb') as f:
@@ -148,7 +154,7 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
-            # 4. Reset Stato Furgone
+            # Reset furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -172,12 +178,10 @@ def rifornimento():
         mappa_litri = {"Vuoto": 5, "Semivuoto": 20, "Metà": 35, "Pieno": 70}
         litri_attuali = mappa_litri.get(furgoni[targa].get('carburante', 'Vuoto'), 5)
         nuovi_litri = litri_attuali + litri_messi
-        
         if nuovi_litri >= CAPACITA_SERBATOIO * 0.85: nuovo = "Pieno"
         elif nuovi_litri >= CAPACITA_SERBATOIO * 0.45: nuovo = "Metà"
         elif nuovi_litri >= CAPACITA_SERBATOIO * 0.20: nuovo = "Semivuoto"
         else: nuovo = "Vuoto"
-        
         furgoni[targa]['carburante'] = nuovo
         salva_stato(furgoni)
         return jsonify({"success": True})
@@ -192,17 +196,23 @@ def elabora_voce():
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
                 {"role": "system", "content": """Rispondi SOLO in JSON. 
-                Mappa mezzi: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'/'grosso'->GG862HC. 
-                Mappa nomi: Valerio, Daniele, Costantino, Simone, Stefano. 
-                Estrai km numerici. Formato: {"targa": "...", "autista": "...", "km": "..."}"""}, 
+                Se senti 'piccolo' -> targa: 'GA087CH'. 
+                Se senti 'medio' -> targa: 'GX942TS'. 
+                Se senti 'grande' o 'grosso' -> targa: 'GG862HC'.
+                Autisti: Valerio, Daniele, Costantino, Simone, Stefano.
+                Formato: {"targa": "...", "autista": "...", "km": "..."}"""}, 
                 {"role": "user", "content": testo}
             ], 
             "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
-        return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 400
-    except: return jsonify({"error": "IA offline"}), 500
+        testo_risposta = r.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', testo_risposta, re.DOTALL)
+        if match:
+            return jsonify(json.loads(match.group()))
+        return jsonify({"error": "No JSON found"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
