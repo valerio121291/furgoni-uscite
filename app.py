@@ -79,7 +79,6 @@ def index():
             km_p = int(request.form.get("km_partenza", 0))
             if targa == "GG862HC" and km_p < 44627:
                 return "Errore: KM minimi 44.627", 400
-
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
                 "km_p": km_p, "autista": equipaggio,
@@ -170,16 +169,19 @@ def rifornimento():
 def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
+        furgoni = carica_stato()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": "Estrai in JSON: targa (GA087CH, GX942TS, GG862HC), autisti (lista nomi), km (numero)."}, 
+                {"role": "system", "content": f"Sei l'Assistente CSA. Dati flotta: {json.dumps(furgoni)}. Se l'utente detta dati (km, nomi, furgoni), rispondi in JSON: {{\"targa\": \"...\", \"autisti\": [], \"km\": 0}}. Se l'utente fa domande su ospedali o procedure, rispondi in JSON: {{\"risposta\": \"...\"}}."}, 
                 {"role": "user", "content": testo}
-            ]
+            ],
+            "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
+        res = r.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', res, re.DOTALL)
         return jsonify(json.loads(match.group()))
     except: return jsonify({"error": "IA offline"}), 500
 
