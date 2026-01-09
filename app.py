@@ -11,7 +11,6 @@ from googleapiclient.discovery import build
 import pytz 
 
 app = Flask(__name__)
-# Usiamo una chiave di backup se os.getenv fallisce per evitare il crash
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
@@ -22,7 +21,6 @@ EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 CAPACITA_SERBATOIO = 70 
 
-# Funzione Orario Roma con gestione errore
 def get_now_it():
     try:
         tz_roma = pytz.timezone('Europe/Rome')
@@ -30,7 +28,6 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Inizializzazione Redis sicura
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -38,10 +35,11 @@ try:
 except:
     kv = None
 
+# KM INIZIALI AGGIORNATI (Furgone Grande: 44627)
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
-    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"}
+    "GG862HC": {"stato": "Libero", "posizione": "Sede", "km": 44627, "autista": "-", "step": 0, "carburante": "Pieno"}
 }
 
 def get_google_service():
@@ -51,8 +49,7 @@ def get_google_service():
         info = json.loads(creds_json)
         creds = Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
         return build('sheets', 'v4', credentials=creds)
-    except:
-        return None
+    except: return None
 
 def carica_stato():
     if kv is None: return STATO_INIZIALE
@@ -60,14 +57,12 @@ def carica_stato():
         stato = kv.get("stato_furgoni")
         if not stato: return STATO_INIZIALE
         return stato if isinstance(stato, dict) else json.loads(stato)
-    except: 
-        return STATO_INIZIALE
+    except: return STATO_INIZIALE
 
 def salva_stato(stato):
     try:
         if kv: kv.set("stato_furgoni", json.dumps(stato))
-    except:
-        pass
+    except: pass
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -80,9 +75,14 @@ def index():
         targa = request.form.get("targa")
 
         if azione == "start" and targa in furgoni:
+            km_p = int(request.form.get("km_partenza", 0))
+            # PROTEZIONE KM: non permette di scalare i KM
+            if km_p < int(furgoni[targa]['km']):
+                return "Errore: I KM non possono essere inferiori all'ultima registrazione!", 400
+
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
-                "km_p": request.form.get("km_partenza"),
+                "km_p": km_p,
                 "autista": request.form.get("autista"),
                 "step": 1, "data_p": get_now_it()
             })
@@ -105,6 +105,7 @@ def index():
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
             
+            # 1. Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -112,6 +113,7 @@ def index():
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
+            # 2. PDF Report
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
@@ -129,6 +131,7 @@ def index():
                 p.showPage(); p.save()
             except: pass
 
+            # 3. Email
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Fine Viaggio: {c['autista']} - {targa}"
@@ -171,15 +174,25 @@ def rifornimento():
         furgoni[targa]['carburante'] = nuovo
         salva_stato(furgoni)
         return jsonify({"success": True})
-    except:
-        return jsonify({"success": False}), 500
+    except: return jsonify({"success": False}), 500
 
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
     try:
-        testo = request.json.get("testo", "")
+        testo = request.json.get("testo", "").lower()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-sonar-small-128k-online", "messages": [{"role": "system", "content": "Estrai dati logistica in JSON."}, {"role": "user", "content": testo}], "temperature": 0}
+        # ISTRUZIONI IA POTENZIATE PER AUTISTA E FURGONE
+        payload = {
+            "model": "llama-3.1-sonar-small-128k-online", 
+            "messages": [
+                {"role": "system", "content": """Estrai dati logistica in JSON. 
+                Mappa i furgoni: 'piccolo'->GA087CH, 'medio'->GX942TS, 'grande'->GG862HC. 
+                Mappa gli autisti: Valerio, Daniele, Costantino, Simone, Stefano. 
+                Esempio: {"targa": "GG862HC", "autista": "Valerio", "km": 44627}"""}, 
+                {"role": "user", "content": testo}
+            ], 
+            "temperature": 0
+        }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
         return jsonify(json.loads(match.group())) if match else jsonify({"error": "No JSON"}), 500
