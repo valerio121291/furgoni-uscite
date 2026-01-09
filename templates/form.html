@@ -3,199 +3,39 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Logistica CSA - Dashboard Professionale</title>
+    <title>Logistica CSA - Dashboard Totale</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root { 
-            --bg-dark: #0f172a; 
-            --card-dark: #1e293b; 
-            --accent: #38bdf8; 
-            --success: #22c55e; 
-            --warning: #f59e0b; 
-            --danger: #ef4444; 
-            --text-main: #f8fafc; 
-            --text-dim: #94a3b8;
-        }
+        :root { --bg-dark: #0f172a; --card-dark: #1e293b; --accent: #38bdf8; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --text-main: #f8fafc; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-dark); margin: 0; padding-bottom: 50px; color: var(--text-main); }
+        .header { background: #000; color: var(--accent); padding: 25px; text-align: center; font-weight: 800; border-bottom: 2px solid var(--accent); text-transform: uppercase; letter-spacing: 2px; }
         
-        body { 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-            background: var(--bg-dark); 
-            margin: 0; 
-            padding-bottom: 60px; 
-            color: var(--text-main); 
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        /* Header Premium */
-        .header { 
-            background: linear-gradient(to bottom, #000, #1e293b); 
-            color: var(--accent); 
-            padding: 30px 20px; 
-            text-align: center; 
-            font-weight: 900; 
-            border-bottom: 3px solid var(--accent); 
-            text-transform: uppercase; 
-            letter-spacing: 3px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-
-        /* Dashboard Statistiche Mezzi */
-        .status-container { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 12px; 
-            padding: 20px; 
-        }
+        /* Dashboard Targhe e Taniche */
+        .status-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; }
+        .truck-card { background: var(--card-dark); padding: 15px 5px; border-radius: 15px; text-align: center; border: 1px solid #334155; transition: 0.3s; }
+        .truck-card.In.Viaggio { border: 2px solid var(--warning); box-shadow: 0 0 10px rgba(245, 158, 11, 0.2); }
+        .truck-card.Libero { border: 2px solid var(--success); opacity: 0.9; }
         
-        .truck-card { 
-            background: var(--card-dark); 
-            padding: 18px 10px; 
-            border-radius: 20px; 
-            text-align: center; 
-            border: 1px solid #334155; 
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
+        .fuel-indicator { margin-top: 8px; font-size: 1.3rem; }
+        .fuel-text { font-size: 0.6rem; text-transform: uppercase; display: block; margin-top: 2px; font-weight: bold; }
+        .btn-refuel { background: rgba(34, 197, 94, 0.1); border: 1px solid var(--success); color: var(--success); padding: 8px; border-radius: 8px; font-size: 0.6rem; margin-top: 10px; cursor: pointer; width: 90%; font-weight: 800; }
+
+        .main-container { padding: 0 15px; }
+        .card { background: var(--card-dark); padding: 25px; border-radius: 24px; border: 1px solid #334155; margin-top: 10px; }
+        label { display: block; margin-top: 15px; font-weight: 600; font-size: 0.75rem; color: var(--accent); text-transform: uppercase; }
+        select, input { width: 100%; padding: 16px; margin-top: 8px; border-radius: 12px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
         
-        .truck-card.In.Viaggio { 
-            border: 2px solid var(--warning); 
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); 
-        }
+        .btn { width: 100%; padding: 20px; margin-top: 15px; border-radius: 15px; border: none; font-weight: 800; cursor: pointer; text-transform: uppercase; display: block; }
+        .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
+        .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
+        .btn-nav { background: #334155; color: #fbbf24; border: 1px solid #fbbf24; margin-top: 10px; padding: 12px; font-size: 0.8rem; }
+        .btn-wa { background: #25d366; color: white; margin-top: 10px; }
+        .btn-annulla { background: #475569; color: white; margin-top: 10px; font-size: 0.8rem; }
         
-        .truck-card.Libero { 
-            border: 2px solid var(--success); 
-            opacity: 0.95; 
-        }
-
-        .truck-card strong { font-size: 1.1rem; display: block; margin-bottom: 5px; }
-
-        /* Tanica Carburante Grafica */
-        .fuel-indicator { margin: 10px 0; position: relative; }
-        .fuel-icon { font-size: 1.6rem; }
-        .fuel-text { 
-            font-size: 0.65rem; 
-            text-transform: uppercase; 
-            display: block; 
-            margin-top: 4px; 
-            font-weight: 800; 
-        }
-
-        /* Bottone Rifornimento Rapido */
-        .btn-refuel { 
-            background: rgba(56, 189, 248, 0.1); 
-            border: 1px solid var(--accent); 
-            color: var(--accent); 
-            padding: 10px; 
-            border-radius: 12px; 
-            font-size: 0.7rem; 
-            margin-top: 12px; 
-            cursor: pointer; 
-            width: 100%; 
-            font-weight: 900;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-        }
-
-        /* Layout Principale */
-        .main-container { padding: 0 20px; max-width: 600px; margin: 0 auto; }
-        
-        .card { 
-            background: var(--card-dark); 
-            padding: 30px; 
-            border-radius: 30px; 
-            border: 1px solid #334155; 
-            margin-top: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-
-        /* Form Styling */
-        label { 
-            display: block; 
-            margin-top: 20px; 
-            font-weight: 700; 
-            font-size: 0.8rem; 
-            color: var(--accent); 
-            text-transform: uppercase; 
-            letter-spacing: 1px;
-        }
-        
-        select, input { 
-            width: 100%; 
-            padding: 18px; 
-            margin-top: 10px; 
-            border-radius: 15px; 
-            border: 2px solid #475569; 
-            background: #0f172a; 
-            color: white; 
-            box-sizing: border-box; 
-            font-size: 1.1rem; 
-            transition: border-color 0.3s;
-        }
-
-        select:focus, input:focus { border-color: var(--accent); outline: none; }
-
-        /* Bottoni Azione */
-        .btn { 
-            width: 100%; 
-            padding: 22px; 
-            margin-top: 20px; 
-            border-radius: 18px; 
-            border: none; 
-            font-weight: 800; 
-            cursor: pointer; 
-            text-transform: uppercase; 
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .btn-start { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4); }
-        .btn-stop { background: linear-gradient(135deg, #16a34a, #15803d); color: white; box-shadow: 0 4px 15px rgba(22, 163, 74, 0.4); }
-        .btn-nav { background: #334155; color: #fbbf24; border: 1px solid #fbbf24; margin-top: 12px; padding: 15px; font-size: 0.9rem; }
-        .btn-wa { background: #25d366; color: white; margin-top: 12px; }
-        .btn-annulla { background: #475569; color: white; margin-top: 15px; font-size: 0.8rem; opacity: 0.7; }
-
-        /* Sistema Vocale IA */
-        .voice-wrapper { 
-            text-align: center; 
-            margin: 25px 0; 
-            padding: 20px; 
-            background: rgba(15, 23, 42, 0.6); 
-            border-radius: 25px; 
-            border: 1px dashed #475569; 
-        }
-        
-        .mic-btn { 
-            width: 75px; 
-            height: 75px; 
-            border-radius: 50%; 
-            background: var(--accent); 
-            border: 5px solid var(--card-dark); 
-            font-size: 28px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            margin: 0 auto; 
-            cursor: pointer; 
-            color: #0f172a;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
-        }
-        
-        .mic-btn.recording { 
-            background: var(--danger); 
-            animation: pulse 1.2s infinite; 
-            color: white; 
-            box-shadow: 0 0 30px rgba(239, 68, 68, 0.6);
-        }
-        
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        
-        .voice-status { font-size: 0.75rem; margin-top: 12px; color: var(--accent); font-weight: 600; }
+        .voice-wrapper { text-align: center; margin: 20px 0; padding: 15px; background: rgba(15, 23, 42, 0.5); border-radius: 15px; border: 1px solid #334155; }
+        .mic-btn { width: 65px; height: 65px; border-radius: 50%; background: var(--accent); border: 4px solid var(--card-dark); font-size: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto; cursor: pointer; color: #0f172a; }
+        .mic-btn.recording { background: var(--danger); animation: pulse 1s infinite; color: white; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -206,20 +46,11 @@
         <div class="truck-card {{ info.stato }}">
             <strong>{{ t }}</strong>
             <div class="fuel-indicator">
-                {% if info.carburante == "Pieno" %}
-                    <i class="fas fa-gas-pump fuel-icon" style="color: var(--success);"></i>
-                    <span class="fuel-text" style="color: var(--success);">Pieno</span>
-                {% elif info.carburante == "Metà" %}
-                    <i class="fas fa-gas-pump fuel-icon" style="color: var(--warning);"></i>
-                    <span class="fuel-text" style="color: var(--warning);">50%</span>
-                {% else %}
-                    <i class="fas fa-gas-pump fuel-icon" style="color: var(--danger);"></i>
-                    <span class="fuel-text" style="color: var(--danger);">Riserva</span>
-                {% endif %}
+                {% if info.carburante == "Pieno" %}<i class="fas fa-gas-pump" style="color: var(--success);"></i><span class="fuel-text">Pieno</span>
+                {% elif info.carburante == "Metà" %}<i class="fas fa-gas-pump" style="color: var(--warning);"></i><span class="fuel-text">Metà</span>
+                {% else %}<i class="fas fa-gas-pump" style="color: var(--danger);"></i><span class="fuel-text">Riserva</span>{% endif %}
             </div>
-            <button type="button" class="btn-refuel" onclick="vaiARifornimento('{{ t }}')">
-                <i class="fas fa-plus-circle"></i> LITRI
-            </button>
+            <button type="button" class="btn-refuel" onclick="vaiARifornimento('{{ t }}')">+LITRI</button>
         </div>
         {% endfor %}
     </div>
@@ -228,14 +59,14 @@
         <div class="card">
             <form method="post" id="form-logistica">
                 {% if not targa_attiva %}
-                    <label>Mezzo Aziendale</label>
+                    <label>Seleziona Mezzo</label>
                     <select name="targa" id="targa_select">
                         <option value="GA087CH">🚚 Piccolo (GA087CH)</option>
                         <option value="GX942TS">🚚🚚 Medio (GX942TS)</option>
                         <option value="GG862HC">🚚🚚🚚 Grosso (GG862HC)</option>
                     </select>
 
-                    <label>Autista in Turno</label>
+                    <label>Autista</label>
                     <select name="autista" id="autista_select">
                         <option value="Valerio">Valerio</option>
                         <option value="Daniele">Daniele</option>
@@ -244,169 +75,105 @@
                         <option value="Stefano">Stefano</option>
                     </select>
 
-                    <label>Lettura Chilometri Attuali</label>
-                    <input type="number" name="km_partenza" id="km_input" placeholder="Inserisci KM cruscotto" required>
+                    <label>KM Iniziali</label>
+                    <input type="number" name="km_partenza" id="km_input" placeholder="Es. 44627" required>
                     
                     <div class="voice-wrapper">
                         <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
-                        <div class="voice-status" id="voice-status">DETTA I DATI (ES: VALERIO GRANDE 44630)</div>
+                        <p style="font-size: 0.7rem; margin-top: 10px; color: var(--accent);">DETTA AUTISTA, MEZZO E KM</p>
                     </div>
 
-                    <button type="submit" name="azione" value="start" class="btn btn-start">
-                        <i class="fas fa-play"></i> Inizia Missione
-                    </button>
+                    <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
 
                 {% else %}
                     <input type="hidden" name="targa" id="targa_corrente" value="{{ targa_attiva }}">
-                    <input type="hidden" id="autista_corrente" value="{{ corsa_attiva.autista }}">
+                    <input type="hidden" id="nome_autista" value="{{ corsa_attiva.autista }}">
                     
-                    <div style="text-align: center; padding: 20px; background: rgba(245, 158, 11, 0.1); border: 2px solid var(--warning); border-radius: 20px; margin-bottom: 20px;">
-                        <h2 style="color:var(--warning); margin:0; font-size: 1.4rem;">{{ targa_attiva }}</h2>
-                        <p style="margin: 5px 0 0 0; font-weight: 700; opacity: 0.8;">AUTISTA: {{ corsa_attiva.autista }}</p>
+                    <div style="text-align: center; padding: 10px; border: 1px solid var(--warning); border-radius: 15px; margin-bottom: 10px;">
+                        <h3 style="color:var(--warning); margin:0;">{{ targa_attiva }} IN VIAGGIO</h3>
+                        <p style="font-size: 0.8rem;">Autista: {{ corsa_attiva.autista }}</p>
                     </div>
 
                     {% if corsa_attiva.step == 1 %}
-                        <label>Destinazione Missione</label>
+                        <label>Destinazione</label>
                         <select name="destinazione" id="destinazione_field">
                             <option value="POLICLINICO UMBERTO 1">Policlinico Umberto I</option>
-                            <option value="SAN GIOVANNI">San Giovanni (Laterani 4)</option>
+                            <option value="SAN GIOVANNI">San Giovanni (Via Laterani 4)</option>
                             <option value="PTV">PTV (Tor Vergata P.S.)</option>
-                            <option value="VIMINALE">Piazza del Viminale</option>
-                            <option value="VIA CAVOUR 5">Via Cavour 5</option>
-                            <option value="VIA GENOVA">Via Genova (Vigili del Fuoco)</option>
+                            <option value="VIMINALE">Viminale</option>
                             <option value="AVEZZANO">Ospedale Avezzano</option>
-                            <option value="AQUILA">Ospedale L'Aquila</option>
-                            <option value="SULMONA">Ospedale Sulmona</option>
-                            <option value="CASTEL DI SANGRO">Ospedale Castel di Sangro</option>
                             <option value="PRATICA DI MARE">Aeronautica Pratica di Mare</option>
-                            <option value="SPALLANZANI">Spallanzani</option>
-                            <option value="BIETTI">Fondazione Bietti</option>
-                            <option value="EUR ARCHIVIO DI STATO">EUR Archivio di Stato</option>
                             <option value="GIRO LIBERO">Giro Libero / Altro</option>
                         </select>
+                        <button type="button" class="btn btn-nav" onclick="apriNavigatore()">🧭 NAVIGATORE</button>
                         
-                        <button type="button" class="btn btn-nav" onclick="apriNavigatore()">
-                            <i class="fas fa-map-marked-alt"></i> AVVIA NAVIGATORE
-                        </button>
-                        
-                        <label>KM Registrati all'Arrivo</label>
-                        <input type="number" name="km_destinazione" id="km_input_dest" placeholder="KM all'arrivo" required>
-                        
-                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">
-                            <i class="fas fa-check-circle"></i> Registra Arrivo
-                        </button>
-                    
+                        <label>KM all'Arrivo</label>
+                        <input type="number" name="km_destinazione" id="km_input_dest" required>
+                        <button type="submit" name="azione" value="arrivo_dest" class="btn btn-start" style="background:var(--warning)">Registra Arrivo</button>
                     {% else %}
-                        <label>KM Finali (Rientro in Sede)</label>
-                        <input type="number" name="km_rientro" id="km_input_fine" placeholder="KM al rientro" required>
-                        
-                        <label>Stato Serbatoio al Rientro</label>
+                        <label>KM Finali (Rientro Sede)</label>
+                        <input type="number" name="km_rientro" id="km_input_fine" required>
+                        <label>Gasolio</label>
                         <select name="carburante">
                             <option value="Pieno">🟢 PIENO</option>
                             <option value="Metà">🟡 METÀ</option>
-                            <option value="Semivuoto">🟠 QUASI VUOTO</option>
                             <option value="Vuoto">🔴 RISERVA</option>
                         </select>
-                        
-                        <button type="submit" name="azione" value="stop" class="btn btn-stop">
-                            <i class="fas fa-flag-checkered"></i> Chiudi e Invia PDF
-                        </button>
-                        
-                        <button type="button" class="btn btn-wa" onclick="inviaWhatsApp()">
-                            <i class="fab fa-whatsapp"></i> NOTIFICA WHATSAPP
-                        </button>
+                        <button type="submit" name="azione" value="stop" class="btn btn-stop">Chiudi e Invia Report</button>
+                        <button type="button" class="btn btn-wa" onclick="inviaWhatsApp()">🟢 WHATSAPP</button>
                     {% endif %}
-                    
-                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla" formnovalidate>ANNULLA OPERAZIONE</button>
+                    <button type="submit" name="azione" value="annulla" class="btn btn-annulla" formnovalidate>ANNULLA</button>
                 {% endif %}
             </form>
         </div>
     </div>
 
     <script>
-    // 1. GESTIONE RIFORNIMENTO
     function vaiARifornimento(targa) {
-        const litri = prompt("Quanti litri di gasolio hai immesso nel mezzo " + targa + "?");
-        if(litri && !isNaN(litri)) {
-            fetch('/rifornimento', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({targa: targa, litri: parseFloat(litri)})
-            }).then(() => {
-                alert("Carburante aggiornato!");
-                location.reload();
-            });
-        }
+        const litri = prompt("Quanti litri per " + targa + "?");
+        if(litri) fetch('/rifornimento', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({targa:targa, litri:parseFloat(litri)})}).then(()=>location.reload());
     }
 
-    // 2. NAVIGATORE PROFESSIONALE
     function apriNavigatore() {
         const d = document.getElementById('destinazione_field').value;
-        const database = {
-            "POLICLINICO UMBERTO 1": "Viale del Policlinico 155, Roma",
-            "SAN GIOVANNI": "Via dei Laterani 4, Roma",
-            "PTV": "Viale Oxford 81, Roma",
-            "VIMINALE": "Piazza del Viminale, Roma",
-            "VIA CAVOUR 5": "Via Cavour 5, Roma",
-            "VIA GENOVA": "Via Genova 1, Roma",
-            "AVEZZANO": "Via Giuseppe di Vittorio, Avezzano",
-            "AQUILA": "Via Lorenzo Natali 1, L'Aquila",
-            "SULMONA": "Viale Giuseppe Mazzini 100, Sulmona",
-            "CASTEL DI SANGRO": "Via Sangrina 20, Castel di Sangro",
-            "PRATICA DI MARE": "Via Pratica di Mare 45, Pomezia",
-            "SPALLANZANI": "Via Portuense 292, Roma",
-            "BIETTI": "Via Santo Stefano Rotondo 6, Roma",
-            "EUR ARCHIVIO DI STATO": "Piazzale degli Archivi 27, Roma"
-        };
-        const indirizzo = database[d] || d;
-        window.open("https://www.google.com/maps/dir/?api=1&destination=" + encodeURIComponent(indirizzo), "_blank");
+        const database = {"SAN GIOVANNI": "Via dei Laterani 4, Roma", "PTV": "Viale Oxford 81, Roma", "POLICLINICO UMBERTO 1": "Viale del Policlinico 155, Roma", "AVEZZANO": "Via Giuseppe di Vittorio, Avezzano"};
+        const addr = database[d] || d;
+        window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr), "_blank");
     }
 
-    // 3. WHATSAPP RAPIDO
     function inviaWhatsApp() {
-        const kmInp = document.getElementById('km_input_fine');
-        const km = kmInp ? kmInp.value : "---";
-        const autista = document.getElementById('autista_corrente').value;
-        const targa = document.getElementById('targa_corrente').value;
-        const msg = `LOGISTICA CSA: Missione terminata.\nAutista: ${autista}\nMezzo: ${targa}\nChilometri: ${km}`;
+        const km = document.getElementById('km_input_fine').value;
+        const msg = `LOGISTICA CSA: Missione terminata. Mezzo: {{ targa_attiva }}. KM: ${km}`;
         window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
     }
 
-    // 4. SISTEMA VOCALE IBRIDO (AI + REGEX)
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
-        recognition.continuous = false;
-
-        document.getElementById('mic-btn').onclick = function(e) {
-            e.preventDefault();
-            recognition.start();
-            this.classList.add('recording');
-            document.getElementById('voice-status').innerText = "ASCOLTO IN CORSO...";
-        };
+        
+        document.getElementById('mic-btn').onclick = (e) => { e.preventDefault(); recognition.start(); document.getElementById('mic-btn').classList.add('recording'); };
 
         recognition.onresult = function(event) {
             const transcript = event.results[0][0].transcript.toLowerCase();
             document.getElementById('mic-btn').classList.remove('recording');
-            document.getElementById('voice-status').innerText = "ELABORAZIONE IA...";
             
-            // Estrazione numeri immediata (per sicurezza)
-            const numMatch = transcript.match(/\d+/g);
-            const activeInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
-            
-            if(numMatch && activeInput) {
-                const valoreKm = numMatch.join('');
-                // Blocco KM Furgone Grande
-                const targaInUso = document.getElementById('targa_select') ? document.getElementById('targa_select').value : "";
-                if((targaInUso === "GG862HC" || transcript.includes("grande")) && parseInt(valoreKm) < 44627) {
-                    alert("ERRORE: I chilometri del furgone GRANDE non possono essere inferiori a 44.627!");
-                    activeInput.value = "";
+            // Estrazione immediata dei numeri (KM)
+            const numeri = transcript.match(/\d+/g);
+            const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
+            if(numeri && kmInput) {
+                const valoreKm = numeri.join('');
+                const targaSel = document.getElementById('targa_select') ? document.getElementById('targa_select').value : "{{ targa_attiva }}";
+                
+                // BLOCCO 44627 PER IL GRANDE
+                if((targaSel === "GG862HC" || transcript.includes("grande") || transcript.includes("grosso")) && parseInt(valoreKm) < 44627) {
+                    alert("Errore: I KM non possono essere inferiori a 44.627!");
                 } else {
-                    activeInput.value = valoreKm;
+                    kmInput.value = valoreKm;
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance("Ricevuto " + valoreKm));
                 }
             }
 
-            // Chiamata all'IA per Mappatura Autista/Targa
+            // Chiamata all'IA per Autista e Furgone
             fetch('/elabora_voce', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -414,26 +181,12 @@
             })
             .then(res => res.json())
             .then(data => {
-                if(data.targa && document.getElementById('targa_select')) {
-                    document.getElementById('targa_select').value = data.targa;
-                }
+                if(data.targa && document.getElementById('targa_select')) document.getElementById('targa_select').value = data.targa;
                 if(data.autista && document.getElementById('autista_select')) {
-                    const nomeFormattato = data.autista.charAt(0).toUpperCase() + data.autista.slice(1).toLowerCase();
-                    document.getElementById('autista_select').value = nomeFormattato;
+                    const nome = data.autista.charAt(0).toUpperCase() + data.autista.slice(1).toLowerCase();
+                    document.getElementById('autista_select').value = nome;
                 }
-                
-                const feedback = `Ricevuto. Impostato ${data.autista || ''} su furgone ${data.targa || ''}`;
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance(feedback));
-                document.getElementById('voice-status').innerText = "DATI INSERITI CON SUCCESSO";
-            })
-            .catch(() => {
-                document.getElementById('voice-status').innerText = "DETTA I DATI (ES: VALERIO GRANDE 44630)";
             });
-        };
-
-        recognition.onerror = () => {
-            document.getElementById('mic-btn').classList.remove('recording');
-            document.getElementById('voice-status').innerText = "ERRORE MICROFONO. RIPROVA.";
         };
     }
     </script>
