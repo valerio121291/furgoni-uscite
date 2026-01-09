@@ -79,6 +79,7 @@ def index():
             km_p = int(request.form.get("km_partenza", 0))
             if targa == "GG862HC" and km_p < 44627:
                 return "Errore: KM minimi 44.627", 400
+
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
                 "km_p": km_p, "autista": equipaggio,
@@ -154,17 +155,6 @@ def index():
 
     return render_template("form.html", furgoni=furgoni, corsa_attiva=corsa_attiva, targa_attiva=targa_attiva)
 
-@app.route("/rifornimento", methods=["POST"])
-def rifornimento():
-    try:
-        data = request.json
-        targa, litri = data.get('targa'), float(data.get('litri', 0))
-        furgoni = carica_stato()
-        furgoni[targa]['carburante'] = "Pieno" if litri > 30 else "Metà"
-        salva_stato(furgoni)
-        return jsonify({"success": True})
-    except: return jsonify({"success": False}), 500
-
 @app.route("/elabora_voce", methods=["POST"])
 def elabora_voce():
     try:
@@ -174,14 +164,12 @@ def elabora_voce():
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": f"Sei l'Assistente CSA. Dati flotta: {json.dumps(furgoni)}. Se l'utente detta dati (km, nomi, furgoni), rispondi in JSON: {{\"targa\": \"...\", \"autisti\": [], \"km\": 0}}. Se l'utente fa domande su ospedali o procedure, rispondi in JSON: {{\"risposta\": \"...\"}}."}, 
+                {"role": "system", "content": f"Sei l'Assistente CSA. Dati flotta: {json.dumps(furgoni)}. Rispondi in JSON. Se l'utente detta dati operativi (targa, nomi, km), estrai JSON: {{\"targa\": \"...\", \"autisti\": [], \"km\": 0}}. Se l'utente fa domande su ospedali o procedure, rispondi in JSON: {{\"risposta\": \"...\"}}."}, 
                 {"role": "user", "content": testo}
-            ],
-            "temperature": 0
+            ]
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        res = r.json()['choices'][0]['message']['content']
-        match = re.search(r'\{.*\}', res, re.DOTALL)
+        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
         return jsonify(json.loads(match.group()))
     except: return jsonify({"error": "IA offline"}), 500
 
