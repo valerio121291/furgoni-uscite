@@ -187,4 +187,9 @@ def elabora_voce():
         if match:
             return jsonify(json.loads(match.group()))
         
-        return jsonify({"
+        return jsonify({"risposta": res_content})
+    except Exception as e:
+        return jsonify({"risposta": "Non riesco a connettermi al cervello centrale."}), 500
+
+if __name__ == "__main__":
+    app.run()
