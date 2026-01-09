@@ -14,6 +14,8 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
+# Inserisci la chiave qui o impostala su Vercel come GOOGLE_API_KEY
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc")
 PPLX_API_KEY = os.getenv("PPLX_API_KEY")
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = "ogteueppdqmtpcvg"
@@ -91,7 +93,6 @@ def index():
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             gasolio = request.form.get("carburante")
-            # Logica Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -115,22 +116,20 @@ def index():
 def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
-        headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
+        # Chiamata a Google Gemini 1.5 Flash
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
+        headers = {'Content-Type': 'application/json'}
         payload = {
-            "model": "llama-3.1-sonar-small-128k-online", 
-            "messages": [
-                {"role": "system", "content": "Sei l'assistente CSA. Rispondi in modo amichevole e breve (max 20 parole)."}, 
-                {"role": "user", "content": testo}
-            ],
-            "temperature": 0.2
+            "contents": [{
+                "parts": [{"text": f"Sei l'assistente vocale della logistica CSA. Rispondi in modo brevissimo (massimo 15 parole) alla domanda: {testo}"}]
+            }]
         }
-        r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        risposta_ia = r.json()['choices'][0]['message']['content']
-        # Inviamo la risposta pulita al frontend
+        r = requests.post(url, headers=headers, json=payload, timeout=8)
+        res = r.json()
+        risposta_ia = res['candidates'][0]['content']['parts'][0]['text']
         return jsonify({"risposta": risposta_ia})
     except Exception as e:
-        print(f"Errore: {e}")
-        return jsonify({"risposta": "Al momento ho un problema di connessione, riprova tra poco."}), 500
+        return jsonify({"risposta": "Cervello CSA momentaneamente offline."}), 500
 
 if __name__ == "__main__":
     app.run()
