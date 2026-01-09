@@ -160,17 +160,26 @@ def elabora_voce():
     try:
         testo = request.json.get("testo", "").lower()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
+        
+        # Istruzioni per distinguere tra DATI e ASSISTENZA
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
-                {"role": "system", "content": "Sei l'Assistente CSA. Se l'utente fa una domanda, rispondi con una frase breve in JSON: {\"risposta\": \"...\"}. Se detta dati, estrai JSON: {\"targa\": \"...\", \"autisti\": [], \"km\": 0}."}, 
+                {"role": "system", "content": "Sei l'Assistente CSA. Se l'utente ti fa una domanda, rispondi in modo breve e amichevole. Restituisci SEMPRE un JSON con questa struttura: {'risposta': 'testo della tua risposta'}"}, 
                 {"role": "user", "content": testo}
-            ]
+            ],
+            "temperature": 0
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
-        match = re.search(r'\{.*\}', r.json()['choices'][0]['message']['content'], re.DOTALL)
-        return jsonify(json.loads(match.group()))
-    except: return jsonify({"error": "IA offline"}), 500
+        
+        # Estraiamo il JSON pulito dalla risposta dell'IA
+        res_content = r.json()['choices'][0]['message']['content']
+        match = re.search(r'\{.*\}', res_content, re.DOTALL)
+        if match:
+            return jsonify(json.loads(match.group()))
+        return jsonify({"risposta": "Scusa, non ho capito la domanda."})
+    except Exception as e:
+        return jsonify({"risposta": "Errore di connessione con il mio cervello centrale."}), 500
 
 if __name__ == "__main__":
     app.run()
