@@ -73,7 +73,7 @@
 
     <div class="main-container">
         <div class="card">
-            <form method="post">
+            <form method="post" id="form-missione">
                 {% if not targa_attiva %}
                     <label>Seleziona Mezzo</label>
                     <select name="targa" id="targa_select">
@@ -96,13 +96,13 @@
                     
                     <div class="voice-wrapper">
                         <div class="mic-btn" id="mic-btn"><i class="fas fa-microphone"></i></div>
-                        <p id="voice-msg" style="font-size: 0.7rem; margin-top: 10px; color: var(--accent);">DETTA I KM A VOCE</p>
+                        <p id="voice-msg" style="font-size: 0.7rem; margin-top: 10px; color: var(--accent);">DETTA AUTISTA, MEZZO E KM</p>
                     </div>
 
                     <button type="submit" name="azione" value="start" class="btn btn-start">Inizia Missione</button>
 
                 {% else %}
-                    <input type="hidden" name="targa" value="{{ targa_attiva }}">
+                    <input type="hidden" name="targa" id="targa_attiva_val" value="{{ targa_attiva }}">
                     <input type="hidden" id="nome_autista" value="{{ corsa_attiva.autista }}">
                     
                     <div style="text-align: center; padding: 15px; border-radius: 15px; margin-bottom: 10px; border: 1px solid var(--warning);">
@@ -158,7 +158,6 @@
     </div>
 
     <script>
-    // FUNZIONE RIFORNIMENTO AUTOMATICO
     function vaiARifornimento(targa) {
         const litri = prompt("Quanti litri hai messo nel furgone " + targa + "?");
         if(litri && !isNaN(litri)) {
@@ -170,7 +169,6 @@
         }
     }
 
-    // NAVIGATORE CON INDIRIZZI ESATTI
     function apriNavigatore() {
         const d = document.getElementById('destinazione_field').value;
         const database = {
@@ -193,16 +191,15 @@
         window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(indirizzo), "_blank");
     }
 
-    // WHATSAPP RAPIDO
     function inviaWhatsApp() {
-        const km = document.querySelector('input[name="km_rientro"]').value;
+        const kmField = document.getElementById('km_input_fine');
+        const km = kmField ? kmField.value : "0";
         const autista = document.getElementById('nome_autista').value;
-        const targa = "{{ targa_attiva }}";
+        const targa = document.getElementById('targa_attiva_val').value;
         const msg = `Missione terminata: ${autista}, Furgone ${targa}, KM: ${km}`;
         window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
     }
 
-    // MICROFONO E RISPOSTA VOCALE
     if ('webkitSpeechRecognition' in window) {
         const recognition = new webkitSpeechRecognition();
         recognition.lang = 'it-IT';
@@ -216,19 +213,33 @@
         recognition.onresult = function(event) {
             const transcript = event.results[0][0].transcript;
             document.getElementById('mic-btn').classList.remove('recording');
-            const numeri = transcript.match(/\d+/g);
-            if(numeri) {
-                const kmFinali = numeri.join('');
-                // Inserisce i km in qualsiasi campo visibile
-                const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
-                if(kmInput) kmInput.value = kmFinali;
-                
-                // L'app risponde
-                const synth = window.speechSynthesis;
-                const utterance = new SpeechSynthesisUtterance("Ricevuto " + kmFinali + " chilometri");
-                utterance.lang = 'it-IT';
-                synth.speak(utterance);
-            }
+            
+            // Chiamata all'IA per elaborare la frase
+            fetch('/elabora_voce', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({testo: transcript})
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Autocompilazione Targa
+                if(data.targa) document.getElementById('targa_select').value = data.targa;
+                // Autocompilazione Autista
+                if(data.autista) document.getElementById('autista_select').value = data.autista;
+                // Gestione KM con blocco sicurezza
+                if(data.km) {
+                    const kmInput = document.getElementById('km_input') || document.getElementById('km_input_dest') || document.getElementById('km_input_fine');
+                    
+                    // Blocco specifico per furgone GRANDE (GG862HC)
+                    if(data.targa === "GG862HC" && parseInt(data.km) < 44627) {
+                        alert("ATTENZIONE: I chilometri non possono essere inferiori a 44.627!");
+                        window.speechSynthesis.speak(new SpeechSynthesisUtterance("Errore. Chilometri troppo bassi."));
+                    } else if(kmInput) {
+                        kmInput.value = data.km;
+                        window.speechSynthesis.speak(new SpeechSynthesisUtterance("Ricevuto " + data.km + " chilometri"));
+                    }
+                }
+            });
         };
     }
     </script>
