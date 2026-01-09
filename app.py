@@ -11,6 +11,7 @@ from googleapiclient.discovery import build
 import pytz 
 
 app = Flask(__name__)
+# Chiave segreta per le sessioni
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
@@ -21,6 +22,7 @@ EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 CAPACITA_SERBATOIO = 70 
 
+# Funzione Orario Roma
 def get_now_it():
     try:
         tz_roma = pytz.timezone('Europe/Rome')
@@ -28,6 +30,7 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
+# Connessione Redis (Upstash)
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -35,6 +38,7 @@ try:
 except:
     kv = None
 
+# Stato iniziale con blocco KM Grande (GG862HC)
 STATO_INIZIALE = {
     "GA087CH": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
     "GX942TS": {"stato": "Libero", "posizione": "Sede", "km": 0, "autista": "-", "step": 0, "carburante": "Pieno"},
@@ -74,11 +78,13 @@ def index():
         targa = request.form.get("targa")
 
         if azione == "start" and targa in furgoni:
+            # Gestione Equipaggio Multiplo
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
+            
             km_p = int(request.form.get("km_partenza", 0))
             if targa == "GG862HC" and km_p < 44627:
-                return "Errore: KM minimi 44.627", 400
+                return "Errore: I chilometri del furgone GRANDE non possono essere inferiori a 44.627!", 400
 
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
@@ -104,6 +110,7 @@ def index():
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
             
+            # 1. Scrittura su Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -111,6 +118,7 @@ def index():
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
+            # 2. Generazione PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
@@ -131,17 +139,19 @@ def index():
                 p.showPage(); p.save()
             except: pass
 
+            # 3. Invio Email
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Report: {targa} - {c['autista']}"
                 msg['From'] = EMAIL_MITTENTE; msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione chiusa.\nEquipaggio: {c['autista']}\nKM: {km_r}")
+                msg.set_content(f"Missione chiusa.\nEquipaggio: {c['autista']}\nKM finali: {km_r}")
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                     smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD); smtp.send_message(msg)
             except: pass
 
+            # 4. Reset Stato
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
@@ -161,25 +171,20 @@ def elabora_voce():
         testo = request.json.get("testo", "").lower()
         headers = {"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"}
         
-        # Istruzioni per distinguere tra DATI e ASSISTENZA
+        # System prompt specifico per il Robottino CSA
         payload = {
             "model": "llama-3.1-sonar-small-128k-online", 
             "messages": [
                 {"role": "system", "content": "Sei l'Assistente CSA. Se l'utente ti fa una domanda, rispondi in modo breve e amichevole. Restituisci SEMPRE un JSON con questa struttura: {'risposta': 'testo della tua risposta'}"}, 
                 {"role": "user", "content": testo}
             ],
-            "temperature": 0
+            "temperature": 0.2
         }
         r = requests.post("https://api.perplexity.ai/chat/completions", headers=headers, json=payload, timeout=10)
         
-        # Estraiamo il JSON pulito dalla risposta dell'IA
         res_content = r.json()['choices'][0]['message']['content']
         match = re.search(r'\{.*\}', res_content, re.DOTALL)
         if match:
             return jsonify(json.loads(match.group()))
-        return jsonify({"risposta": "Scusa, non ho capito la domanda."})
-    except Exception as e:
-        return jsonify({"risposta": "Errore di connessione con il mio cervello centrale."}), 500
-
-if __name__ == "__main__":
-    app.run()
+        
+        return jsonify({"
