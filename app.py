@@ -13,14 +13,16 @@ import pytz
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
-# --- CONFIGURAZIONE ---
-# La chiave Gemini per l'IA
+# --- CONFIGURAZIONE VARIABILI (DA VERCEL) ---
+# Usiamo Gemini per l'IA vocale
 GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc" 
-# La tua email
+
+# Leggiamo la password dalla variabile che hai chiamato 'robottino' su Vercel
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
-# La NUOVA password per le app di 16 lettere (senza spazi)
-EMAIL_PASSWORD = "vzmxtuvtwruvoohd" 
+EMAIL_PASSWORD = os.getenv("robottino", "vzmxtuvtwruvoohd") 
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
+
+# Google Sheets
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
 def get_now_it():
@@ -30,8 +32,9 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Database Redis per Vercel
+# Database Redis (per salvare lo stato su Vercel)
 try:
+    # Usiamo le tue variabili Upstash
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
     kv = Redis(url=url, token=token) if url and token else None
@@ -58,7 +61,9 @@ def carica_stato():
     try:
         stato = kv.get("stato_furgoni")
         if not stato: return STATO_INIZIALE
-        return stato if isinstance(stato, dict) else json.loads(stato)
+        # Gestione formati Redis
+        if isinstance(stato, dict): return stato
+        return json.loads(stato)
     except: return STATO_INIZIALE
 
 def salva_stato(stato):
@@ -76,15 +81,12 @@ def index():
         azione = request.form.get("azione")
         targa = request.form.get("targa")
 
-        # 1. INIZIO MISSIONE
+        # --- PARTENZA ---
         if azione == "start" and targa in furgoni:
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
             km_p = int(request.form.get("km_partenza", 0))
             
-            if targa == "GG862HC" and km_p < 44627:
-                return "Errore: KM minimi 44.627", 400
-
             furgoni[targa].update({
                 "stato": "In Viaggio", "posizione": "TIBURTINA",
                 "km_p": km_p, "autista": equipaggio,
@@ -94,7 +96,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
-        # 2. ARRIVO DESTINAZIONE
+        # --- DESTINAZIONE ---
         elif azione == "arrivo_dest" and targa:
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -104,14 +106,14 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
-        # 3. FINE MISSIONE (PDF + EMAIL)
+        # --- FINE (PDF + EMAIL + SHEETS) ---
         elif azione == "stop" and targa:
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
             
-            # Google Sheets
+            # 1. Scrittura su Google Sheets
             try:
                 service = get_google_service()
                 if service:
@@ -119,14 +121,12 @@ def index():
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
-            # PDF
+            # 2. Creazione PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
                 p.setFont("Helvetica-Bold", 18)
                 p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT MISSIONE")
-                p.setFont("Helvetica", 11)
-                p.drawCentredString(300, 780, f"Equipaggio: {c['autista']}")
                 
                 def draw_block(titolo, info, km, data, y_pos, color_bg):
                     p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
@@ -141,13 +141,13 @@ def index():
                 p.showPage(); p.save()
             except: pass
 
-            # Email con SSL
+            # 3. Invio Email con sicurezza SSL
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Report: {targa} - {c['autista']}"
+                msg['Subject'] = f"Report Missione: {targa}"
                 msg['From'] = EMAIL_MITTENTE
                 msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Missione chiusa.\nMezzo: {targa}\nEquipaggio: {c['autista']}\nKM Rientro: {km_r}")
+                msg.set_content(f"Report missione completato.\nMezzo: {targa}\nAutista: {c['autista']}\nKM Rientro: {km_r}")
                 
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
@@ -156,9 +156,9 @@ def index():
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
                     smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
                     smtp.send_message(msg)
-            except Exception as e:
-                print(f"Errore Email: {e}")
+            except: pass
 
+            # Reset stato furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
