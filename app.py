@@ -1,4 +1,4 @@
-import os, json, io, requests, re, smtplib
+import os, json, io, requests, re, smtplib, ssl
 from flask import Flask, render_template, request, session, send_file, redirect, url_for, jsonify
 from datetime import datetime
 from reportlab.pdfgen import canvas
@@ -14,9 +14,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE ---
-GOOGLE_API_KEY = "vzmxtuvtwruvoohd"
+# La chiave Gemini per l'IA
+GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc" 
+# La tua email
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
-EMAIL_PASSWORD = "ogteueppdqmtpcvg"
+# La NUOVA password per le app di 16 lettere (senza spazi)
+EMAIL_PASSWORD = "vzmxtuvtwruvoohd" 
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
@@ -27,7 +30,7 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Database Redis (per salvare lo stato su Vercel)
+# Database Redis per Vercel
 try:
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
@@ -73,7 +76,7 @@ def index():
         azione = request.form.get("azione")
         targa = request.form.get("targa")
 
-        # --- INIZIO MISSIONE ---
+        # 1. INIZIO MISSIONE
         if azione == "start" and targa in furgoni:
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
@@ -91,7 +94,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
-        # --- ARRIVO DESTINAZIONE ---
+        # 2. ARRIVO DESTINAZIONE
         elif azione == "arrivo_dest" and targa:
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -101,7 +104,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
-        # --- FINE MISSIONE (INVIO EMAIL E PDF) ---
+        # 3. FINE MISSIONE (PDF + EMAIL)
         elif azione == "stop" and targa:
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
@@ -138,19 +141,23 @@ def index():
                 p.showPage(); p.save()
             except: pass
 
-            # Email
+            # Email con SSL
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Report: {targa} - {c['autista']}"
                 msg['From'] = EMAIL_MITTENTE
                 msg['To'] = EMAIL_DESTINATARIO
                 msg.set_content(f"Missione chiusa.\nMezzo: {targa}\nEquipaggio: {c['autista']}\nKM Rientro: {km_r}")
+                
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                
+                context = ssl.create_default_context()
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
                     smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
                     smtp.send_message(msg)
-            except: pass
+            except Exception as e:
+                print(f"Errore Email: {e}")
 
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
