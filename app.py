@@ -20,7 +20,7 @@ GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc"
 # Leggiamo la password dalla variabile che hai chiamato 'robottino' su Vercel
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
 EMAIL_PASSWORD = os.getenv("robottino", "vzmxtuvtwruvoohd") 
-EMAIL_DESTINATARIO = "pvalerio910@gmail.com, archivio.roma@consorziocsa.it"
+EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 
 # Google Sheets
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
