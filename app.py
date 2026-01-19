@@ -13,16 +13,12 @@ import pytz
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
-# --- CONFIGURAZIONE VARIABILI (DA VERCEL) ---
-# Usiamo Gemini per l'IA vocale
+# --- CONFIGURAZIONE VARIABILI ---
 GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc" 
-
-# Leggiamo la password dalla variabile che hai chiamato 'robottino' su Vercel
 EMAIL_MITTENTE = "pvalerio910@gmail.com"
+# Legge 'robottino' da Vercel, altrimenti usa il default
 EMAIL_PASSWORD = os.getenv("robottino", "vzmxtuvtwruvoohd") 
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
-
-# Google Sheets
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
 def get_now_it():
@@ -32,9 +28,8 @@ def get_now_it():
     except:
         return datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Database Redis (per salvare lo stato su Vercel)
+# Database Redis (Upstash)
 try:
-    # Usiamo le tue variabili Upstash
     url = os.getenv("KV_REST_API_URL")
     token = os.getenv("KV_REST_API_TOKEN")
     kv = Redis(url=url, token=token) if url and token else None
@@ -61,7 +56,6 @@ def carica_stato():
     try:
         stato = kv.get("stato_furgoni")
         if not stato: return STATO_INIZIALE
-        # Gestione formati Redis
         if isinstance(stato, dict): return stato
         return json.loads(stato)
     except: return STATO_INIZIALE
@@ -96,7 +90,7 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
-        # --- DESTINAZIONE ---
+        # --- ARRIVO DESTINAZIONE ---
         elif azione == "arrivo_dest" and targa:
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -112,21 +106,27 @@ def index():
             km_r = request.form.get("km_rientro")
             gasolio = request.form.get("carburante")
             data_r = get_now_it()
+            equipaggio_nomi = c.get('autista', 'Non specificato')
             
-            # 1. Scrittura su Google Sheets
+            # 1. Google Sheets
             try:
                 service = get_google_service()
                 if service:
-                    riga = [c['data_p'], c.get('data_d','-'), data_r, c['autista'], targa, "TIBURTINA", c.get('dest_intermedia','-'), c['km_p'], c.get('km_d','-'), km_r, f"Gasolio: {gasolio}"]
+                    riga = [c['data_p'], c.get('data_d','-'), data_r, equipaggio_nomi, targa, "TIBURTINA", c.get('dest_intermedia','-'), c['km_p'], c.get('km_d','-'), km_r, f"Gasolio: {gasolio}"]
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
             except: pass
 
-            # 2. Creazione PDF
+            # 2. Creazione PDF con Nomi Conducenti
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
                 p.setFont("Helvetica-Bold", 18)
-                p.drawCentredString(300, 800, "LOGISTICA CSA - REPORT MISSIONE")
+                p.drawCentredString(300, 810, "LOGISTICA CSA - REPORT MISSIONE")
+                
+                # Inserimento nomi equipaggio nel PDF
+                p.setFont("Helvetica-Bold", 12)
+                p.setFillColor(colors.darkblue)
+                p.drawCentredString(300, 790, f"EQUIPAGGIO: {equipaggio_nomi}")
                 
                 def draw_block(titolo, info, km, data, y_pos, color_bg):
                     p.setFillColor(color_bg); p.rect(50, y_pos-60, 500, 60, fill=1)
@@ -134,20 +134,21 @@ def index():
                     p.setFont("Helvetica", 10); p.drawString(60, y_pos-35, f"LUOGO: {info} | ORA: {data}"); p.drawString(60, y_pos-50, f"KM: {km}")
                     return y_pos - 80
                 
-                y = 700
+                y = 750
                 y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
                 y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
                 y = draw_block("3. RIENTRO IN SEDE", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
+                
                 p.showPage(); p.save()
             except: pass
 
-            # 3. Invio Email con sicurezza SSL
+            # 3. Invio Email SSL
             try:
                 msg = EmailMessage()
-                msg['Subject'] = f"Report Missione: {targa}"
+                msg['Subject'] = f"Report Missione: {targa} - {equipaggio_nomi}"
                 msg['From'] = EMAIL_MITTENTE
                 msg['To'] = EMAIL_DESTINATARIO
-                msg.set_content(f"Report missione completato.\nMezzo: {targa}\nAutista: {c['autista']}\nKM Rientro: {km_r}")
+                msg.set_content(f"Missione chiusa.\nMezzo: {targa}\nEquipaggio: {equipaggio_nomi}\nKM Rientro: {km_r}")
                 
                 with open(pdf_path, 'rb') as f:
                     msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=f"Report_{targa}.pdf")
@@ -158,7 +159,7 @@ def index():
                     smtp.send_message(msg)
             except: pass
 
-            # Reset stato furgone
+            # Reset furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
             salva_stato(furgoni)
             session.pop("targa_in_uso", None)
