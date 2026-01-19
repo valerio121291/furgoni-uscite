@@ -15,9 +15,10 @@ app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE VARIABILI ---
 GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc" 
-EMAIL_MITTENTE = ["pvalerio910@gmail.com", "archivio.roma@consorziocsa.it"]
-# Legge 'robottino' da Vercel, altrimenti usa il default
+EMAIL_MITTENTE = "pvalerio910@gmail.com"
+# Password 'robottino' da Vercel
 EMAIL_PASSWORD = os.getenv("robottino", "vzmxtuvtwruvoohd") 
+# Destinatario unico per attivare il filtro Gmail
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
 SPREADSHEET_ID = '13vzhKIN6GkFaGhoPkTX0vnUNGZy6wcMT0JWZCpIsx68'
 
@@ -75,7 +76,6 @@ def index():
         azione = request.form.get("azione")
         targa = request.form.get("targa")
 
-        # --- PARTENZA ---
         if azione == "start" and targa in furgoni:
             autisti_lista = request.form.getlist("autista")
             equipaggio = ", ".join(autisti_lista) if autisti_lista else "Non specificato"
@@ -90,7 +90,6 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
             
-        # --- ARRIVO DESTINAZIONE ---
         elif azione == "arrivo_dest" and targa:
             furgoni[targa].update({
                 "dest_intermedia": request.form.get("destinazione"),
@@ -100,7 +99,6 @@ def index():
             salva_stato(furgoni)
             return redirect(url_for('index'))
 
-        # --- FINE (PDF + EMAIL + SHEETS) ---
         elif azione == "stop" and targa:
             c = furgoni.get(targa)
             km_r = request.form.get("km_rientro")
@@ -114,16 +112,14 @@ def index():
                 if service:
                     riga = [c['data_p'], c.get('data_d','-'), data_r, equipaggio_nomi, targa, "TIBURTINA", c.get('dest_intermedia','-'), c['km_p'], c.get('km_d','-'), km_r, f"Gasolio: {gasolio}"]
                     service.spreadsheets().values().append(spreadsheetId=SPREADSHEET_ID, range="Foglio1!A:K", valueInputOption="USER_ENTERED", body={"values": [riga]}).execute()
-            except: pass
+            except Exception as e: print(f"Errore Sheets: {e}")
 
-            # 2. Creazione PDF con Nomi Conducenti
+            # 2. Creazione PDF
             pdf_path = "/tmp/Report_Viaggio.pdf"
             try:
                 p = canvas.Canvas(pdf_path, pagesize=A4)
                 p.setFont("Helvetica-Bold", 18)
                 p.drawCentredString(300, 810, "LOGISTICA CSA - REPORT MISSIONE")
-                
-                # Inserimento nomi equipaggio nel PDF
                 p.setFont("Helvetica-Bold", 12)
                 p.setFillColor(colors.darkblue)
                 p.drawCentredString(300, 790, f"EQUIPAGGIO: {equipaggio_nomi}")
@@ -138,11 +134,10 @@ def index():
                 y = draw_block("1. PARTENZA", "TIBURTINA", c['km_p'], c['data_p'], y, colors.lightgrey)
                 y = draw_block("2. ARRIVO INTERMEDIO", c.get('dest_intermedia','-'), c.get('km_d','-'), c.get('data_d','-'), y, colors.whitesmoke)
                 y = draw_block("3. RIENTRO IN SEDE", "TIBURTINA", km_r, data_r, y, colors.lightgrey)
-                
                 p.showPage(); p.save()
-            except: pass
+            except Exception as e: print(f"Errore PDF: {e}")
 
-            # 3. Invio Email SSL
+            # 3. Invio Email SSL (Punta a te stesso per attivare il filtro Gmail)
             try:
                 msg = EmailMessage()
                 msg['Subject'] = f"Report Missione: {targa} - {equipaggio_nomi}"
@@ -157,7 +152,7 @@ def index():
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
                     smtp.login(EMAIL_MITTENTE, EMAIL_PASSWORD)
                     smtp.send_message(msg)
-            except: pass
+            except Exception as e: print(f"Errore Email: {e}")
 
             # Reset furgone
             furgoni[targa] = {"stato": "Libero", "posizione": "Sede", "km": km_r, "autista": "-", "step": 0, "carburante": gasolio}
@@ -187,3 +182,4 @@ def elabora_voce():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
