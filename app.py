@@ -15,7 +15,7 @@ app.secret_key = os.getenv("SECRET_KEY", "logistica_csa_valerio_2026")
 
 # --- CONFIGURAZIONE VARIABILI ---
 GOOGLE_API_KEY = "AIzaSyCxfGEZAcmMc00D6CCwsaAwAC0GY6EAaUc" 
-EMAIL_MITTENTE = "pvalerio910@gmail.com"
+EMAIL_MITTENTE = ["pvalerio910@gmail.com", "archivio.roma@consorziocsa.it"]
 # Legge 'robottino' da Vercel, altrimenti usa il default
 EMAIL_PASSWORD = os.getenv("robottino", "vzmxtuvtwruvoohd") 
 EMAIL_DESTINATARIO = "pvalerio910@gmail.com"
